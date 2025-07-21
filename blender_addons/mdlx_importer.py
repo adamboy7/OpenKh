@@ -141,8 +141,9 @@ class IMPORT_OT_mdlx(bpy.types.Operator, ImportHelper):
         bone_map = {}
         for b in model.bones:
             bone = edit_bones.new(f"bone_{b.index}")
-            bone.head = (0, 0, 0)
-            bone.tail = (0, 0.1, 0)
+            head = Vector((b.trans[0], b.trans[1], b.trans[2]))
+            bone.head = head
+            bone.tail = head + Vector((0, 0.1, 0))
             bone_map[b.index] = bone
 
         for b in model.bones:
