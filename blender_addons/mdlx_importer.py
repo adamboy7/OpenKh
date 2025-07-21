@@ -138,12 +138,36 @@ class IMPORT_OT_mdlx(bpy.types.Operator, ImportHelper):
         bpy.ops.object.mode_set(mode='EDIT')
 
         edit_bones = arm_obj.data.edit_bones
+
+        abs_trans = {}
+        abs_rot = {}
+        for b in model.bones:
+            if b.parent >= 0:
+                p_rot = abs_rot[b.parent]
+                p_trans = abs_trans[b.parent]
+            else:
+                p_rot = Quaternion((1, 0, 0, 0))
+                p_trans = Vector((0, 0, 0))
+
+            local_trans = Vector((b.trans[0], b.trans[1], b.trans[2]))
+            world_trans = p_trans + p_rot @ local_trans
+            abs_trans[b.index] = world_trans
+
+            local_rot = Quaternion((1, 0, 0, 0))
+            if b.rot[2]:
+                local_rot = local_rot @ Quaternion((0, 0, 1), b.rot[2])
+            if b.rot[1]:
+                local_rot = local_rot @ Quaternion((0, 1, 0), b.rot[1])
+            if b.rot[0]:
+                local_rot = local_rot @ Quaternion((1, 0, 0), b.rot[0])
+            abs_rot[b.index] = p_rot @ local_rot
+
         bone_map = {}
         for b in model.bones:
             bone = edit_bones.new(f"bone_{b.index}")
-            head = Vector((b.trans[0], b.trans[1], b.trans[2]))
+            head = abs_trans[b.index]
             bone.head = head
-            bone.tail = head + Vector((0, 0.1, 0))
+            bone.tail = head + abs_rot[b.index] @ Vector((0, 0.1, 0))
             bone_map[b.index] = bone
 
         for b in model.bones:
