@@ -10,6 +10,7 @@ bl_info = {
 
 import bpy
 import struct
+import io
 from mathutils import Matrix, Vector, Quaternion
 from bpy_extras.io_utils import ImportHelper
 
@@ -95,7 +96,7 @@ class MdlxModel:
         p = bone_offset
         for i in range(bone_count):
             bone_bytes = fobj[p:p+0x40].tobytes()
-            bones.append(MdlxModel.Bone(memoryview(bone_bytes)))
+            bones.append(MdlxModel.Bone(io.BytesIO(bone_bytes)))
             p += 0x40
         self.bones = bones
         # NOTE: Mesh parsing is omitted in this simplified example
