@@ -90,6 +90,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.DependencyInjection
                 sp => sp.GetRequiredService<MonoGameImGuiBootstrap>().Content
             );
 
+            self.AddSingleton<CameraLockOptions>();
+
             self.AddSingleton(
                 sp => sp.GetRequiredService<MonoGameImGuiBootstrap>().GraphicsDevice
             );
@@ -117,6 +119,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.DependencyInjection
             self.AddSingleton<IWindowRunnableProvider, FCurveKeyManagerWindowUsecase>();
             self.AddSingleton<IWindowRunnableProvider, FCurvesFkIkGridManagerWindow>();
             self.AddSingleton<IWindowRunnableProvider, NormalMessagesWindowUsecase>();
+            self.AddSingleton<IWindowRunnableProvider, CameraWindowUsecase>();
 
 
 

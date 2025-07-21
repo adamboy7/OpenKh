@@ -46,6 +46,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
         private readonly NormalMessages _normalMessages;
         private readonly GlobalInfo _globalInfo;
         private readonly Engine.Camera _camera;
+        private readonly CameraLockOptions _cameraLockOptions;
         private readonly LoadedModel _loadedModel;
         private readonly AskOpenFileNowUsecase _askOpenFileNowUsecase;
         private readonly ErrorMessages _errorMessages;
@@ -94,6 +95,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             AskOpenFileNowUsecase askOpenFileNowUsecase,
             LoadedModel loadedModel,
             OpenKh.Engine.Camera camera,
+            CameraLockOptions cameraLockOptions,
             GlobalInfo globalInfo,
             NormalMessages normalMessages
         )
@@ -101,6 +103,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             _normalMessages = normalMessages;
             _globalInfo = globalInfo;
             _camera = camera;
+            _cameraLockOptions = cameraLockOptions;
             _loadedModel = loadedModel;
             _askOpenFileNowUsecase = askOpenFileNowUsecase;
             _errorMessages = errorMessages;
@@ -143,10 +146,6 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                     runnable();
                 }
 
-                if (EditorSettings.ViewCamera)
-                {
-                    CameraWindow.Run(_camera);
-                }
             });
 
             foreach (var runnable in _windowRunnables)
@@ -509,6 +508,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 moveSpeed = (float)(deltaTime * EditorSettings.MoveSpeedShift);
 
             var camera = _camera;
+            var prevPos = camera.CameraPosition;
+            var prevRot = camera.CameraRotationYawPitchRoll;
             if (keyboard.IsKeyDown(Keys.W))
                 camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtX, moveSpeed * 5);
             if (keyboard.IsKeyDown(Keys.S))
@@ -530,6 +531,17 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 camera.CameraRotationYawPitchRoll += new Vector3(1 * speed, 0, 0);
             if (keyboard.IsKeyDown(Keys.Right))
                 camera.CameraRotationYawPitchRoll -= new Vector3(1 * speed, 0, 0);
+
+            var newPos = camera.CameraPosition;
+            if (_cameraLockOptions.LockPosX) newPos.X = prevPos.X;
+            if (_cameraLockOptions.LockPosY) newPos.Y = prevPos.Y;
+            if (_cameraLockOptions.LockPosZ) newPos.Z = prevPos.Z;
+            camera.CameraPosition = newPos;
+
+            var newRot = camera.CameraRotationYawPitchRoll;
+            if (_cameraLockOptions.LockRotX) newRot.X = prevRot.X;
+            if (_cameraLockOptions.LockRotY) newRot.Y = prevRot.Y;
+            camera.CameraRotationYawPitchRoll = newRot;
         }
 
         private void ProcessMouseInput(MouseState mouse)
@@ -546,10 +558,16 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                     _previousMousePosition = mouse.Position;
                 }
                 var camera = _camera;
+                var prevRot = camera.CameraRotationYawPitchRoll;
                 var xSpeed = (_previousMousePosition.X - mouse.Position.X) * Speed;
                 var ySpeed = (_previousMousePosition.Y - mouse.Position.Y) * Speed;
                 camera.CameraRotationYawPitchRoll += new Vector3(1 * -xSpeed, 0, 0);
                 camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * ySpeed);
+
+                var rotAfter = camera.CameraRotationYawPitchRoll;
+                if (_cameraLockOptions.LockRotX) rotAfter.X = prevRot.X;
+                if (_cameraLockOptions.LockRotY) rotAfter.Y = prevRot.Y;
+                camera.CameraRotationYawPitchRoll = rotAfter;
 
                 var viewport = _graphicsDevice.Viewport;
                 var wrapX = mouse.Position.X <= 0 ? viewport.Width - 2 :
