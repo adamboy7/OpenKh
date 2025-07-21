@@ -162,12 +162,17 @@ class MDLX_PT_import_panel(bpy.types.Panel):
 
 classes = [IMPORT_OT_mdlx, MDLX_PT_import_panel]
 
+def menu_func_import(self, context):
+    self.layout.operator(IMPORT_OT_mdlx.bl_idname, text="Kingdom Hearts MDLX")
+
 def register():
     for cls in classes:
         bpy.utils.register_class(cls)
+    bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
 
 
 def unregister():
+    bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     for cls in classes:
         bpy.utils.unregister_class(cls)
 
