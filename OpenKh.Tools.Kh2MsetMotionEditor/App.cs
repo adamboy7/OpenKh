@@ -523,9 +523,9 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
 
             if (keyboard.IsKeyDown(Keys.Up))
-                camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * speed);
+                camera.CameraRotationYawPitchRoll += new Vector3(0, 1 * speed, 0);
             if (keyboard.IsKeyDown(Keys.Down))
-                camera.CameraRotationYawPitchRoll -= new Vector3(0, 0, 1 * speed);
+                camera.CameraRotationYawPitchRoll -= new Vector3(0, 1 * speed, 0);
             if (keyboard.IsKeyDown(Keys.Left))
                 camera.CameraRotationYawPitchRoll += new Vector3(1 * speed, 0, 0);
             if (keyboard.IsKeyDown(Keys.Right))
@@ -549,7 +549,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 var xSpeed = (_previousMousePosition.X - mouse.Position.X) * Speed;
                 var ySpeed = (_previousMousePosition.Y - mouse.Position.Y) * Speed;
                 camera.CameraRotationYawPitchRoll += new Vector3(1 * -xSpeed, 0, 0);
-                camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * ySpeed);
+                camera.CameraRotationYawPitchRoll += new Vector3(0, 1 * ySpeed, 0);
 
                 var viewport = _graphicsDevice.Viewport;
                 var wrapX = mouse.Position.X <= 0 ? viewport.Width - 2 :
