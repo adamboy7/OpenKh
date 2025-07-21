@@ -538,6 +538,18 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 var ySpeed = (_previousMousePosition.Y - mouse.Position.Y) * Speed;
                 camera.CameraRotationYawPitchRoll += new Vector3(1 * -xSpeed, 0, 0);
                 camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * ySpeed);
+
+                var viewport = _graphicsDevice.Viewport;
+                var wrapX = mouse.Position.X <= 0 ? viewport.Width - 2 :
+                            (mouse.Position.X >= viewport.Width - 1 ? 1 : mouse.Position.X);
+                var wrapY = mouse.Position.Y <= 0 ? viewport.Height - 2 :
+                            (mouse.Position.Y >= viewport.Height - 1 ? 1 : mouse.Position.Y);
+                if (wrapX != mouse.Position.X || wrapY != mouse.Position.Y)
+                {
+                    Mouse.SetPosition(wrapX, wrapY);
+                    _previousMousePosition = new xna.Point(wrapX, wrapY);
+                    return;
+                }
             }
 
             _previousMousePosition = mouse.Position;
