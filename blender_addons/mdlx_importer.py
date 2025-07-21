@@ -138,11 +138,48 @@ class IMPORT_OT_mdlx(bpy.types.Operator, ImportHelper):
         bpy.ops.object.mode_set(mode='EDIT')
 
         edit_bones = arm_obj.data.edit_bones
+
+        bone_lookup = {b.index: b for b in model.bones}
+        abs_trans = {}
+        abs_rot = {}
+
+        def calc_world(idx):
+            if idx in abs_trans:
+                return abs_trans[idx], abs_rot[idx]
+
+            b = bone_lookup[idx]
+            if b.parent >= 0 and b.parent in bone_lookup:
+                p_trans, p_rot = calc_world(b.parent)
+            else:
+                p_trans = Vector((0, 0, 0))
+                p_rot = Quaternion((1, 0, 0, 0))
+
+            local_trans = Vector((b.trans[0], b.trans[1], b.trans[2]))
+            world_trans = p_trans + p_rot @ local_trans
+
+            local_rot = Quaternion((1, 0, 0, 0))
+            if b.rot[2]:
+                local_rot = local_rot @ Quaternion((0, 0, 1), b.rot[2])
+            if b.rot[1]:
+                local_rot = local_rot @ Quaternion((0, 1, 0), b.rot[1])
+            if b.rot[0]:
+                local_rot = local_rot @ Quaternion((1, 0, 0), b.rot[0])
+
+            world_rot = p_rot @ local_rot
+
+            abs_trans[idx] = world_trans
+            abs_rot[idx] = world_rot
+            return world_trans, world_rot
+
+        for idx in bone_lookup:
+            calc_world(idx)
+
         bone_map = {}
         for b in model.bones:
             bone = edit_bones.new(f"bone_{b.index}")
-            bone.head = (0, 0, 0)
-            bone.tail = (0, 0.1, 0)
+            head = abs_trans[b.index]
+            bone.head = head
+            bone.tail = head + abs_rot[b.index] @ Vector((0, 0.1, 0))
             bone_map[b.index] = bone
 
         for b in model.bones:
