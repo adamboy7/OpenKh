@@ -2,6 +2,8 @@ import bpy
 import csv
 import math
 
+SCALE_FACTOR = 100.0  # viewer units per blender meter
+
 
 def export_camera_log(csv_path: str, camera_name: str = "Camera"):
     """Export camera keyframes to a CSV log compatible with the motion editor."""
@@ -23,12 +25,12 @@ def export_camera_log(csv_path: str, camera_name: str = "Camera"):
             loc = cam.matrix_world.translation
             rot = cam.rotation_euler
 
-            x = -loc.x
-            y = loc.y
-            z = loc.z
-            yaw = math.degrees(rot.y)
+            x = -loc.x * SCALE_FACTOR
+            y = loc.y * SCALE_FACTOR
+            z = loc.z * SCALE_FACTOR
+            yaw = -math.degrees(rot.y)
             pitch = math.degrees(rot.x)
-            roll = math.degrees(rot.z)
+            roll = -math.degrees(rot.z)
 
             writer.writerow([frame - frame_start, x, y, z, yaw, pitch, roll])
 

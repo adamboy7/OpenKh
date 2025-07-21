@@ -3,6 +3,8 @@ import csv
 import math
 from mathutils import Euler
 
+SCALE_FACTOR = 100.0  # viewer units per blender meter
+
 
 def import_camera_log(csv_path: str, camera_name: str = "Camera"):
     """Import camera position and orientation from a CSV log.
@@ -19,12 +21,12 @@ def import_camera_log(csv_path: str, camera_name: str = "Camera"):
     with open(csv_path, newline='') as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            x = float(row['X'])
-            y = float(row['Y'])
-            z = float(row['Z'])
-            yaw = float(row['Yaw'])
+            x = float(row['X']) / SCALE_FACTOR
+            y = float(row['Y']) / SCALE_FACTOR
+            z = float(row['Z']) / SCALE_FACTOR
+            yaw = -float(row['Yaw'])
             pitch = float(row['Pitch'])
-            roll = float(row['Roll'])
+            roll = -float(row['Roll'])
 
             cam.location = (-x, y, z)
             cam.rotation_euler = Euler(
