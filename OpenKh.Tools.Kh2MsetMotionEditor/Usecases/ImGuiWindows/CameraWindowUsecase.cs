@@ -1,6 +1,7 @@
 using OpenKh.Engine;
 using OpenKh.Tools.Kh2MsetMotionEditor.Helpers;
 using OpenKh.Tools.Kh2MsetMotionEditor.Interfaces;
+using OpenKh.Tools.Kh2MsetMotionEditor.Windows;
 using System;
 using static OpenKh.Tools.Common.CustomImGui.ImGuiEx;
 
