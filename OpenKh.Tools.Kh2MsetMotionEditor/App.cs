@@ -16,9 +16,11 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Windows;
+using System.Drawing;
 using Xe.Tools.Wpf.Dialogs;
 using static OpenKh.Tools.Common.CustomImGui.ImGuiEx;
 using xna = Microsoft.Xna.Framework;
+using System.Windows.Forms;
 
 namespace OpenKh.Tools.Kh2MsetMotionEditor
 {
@@ -58,6 +60,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
         private bool _exitFlag = false;
 
         private StreamWriter? _cameraLogWriter;
+
+        private bool _mouseLocked;
 
         private readonly Dictionary<Keys, Action> _keyMapping = new Dictionary<Keys, Action>();
         private string _gamePath;
@@ -533,6 +537,14 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             const float Speed = 0.25f;
             if (mouse.LeftButton == ButtonState.Pressed)
             {
+                if (!_mouseLocked)
+                {
+                    var position = _bootstrap.Window.Position;
+                    var client = _bootstrap.Window.ClientBounds;
+                    Cursor.Clip = new Rectangle(position.X, position.Y, client.Width, client.Height);
+                    _mouseLocked = true;
+                    _previousMousePosition = mouse.Position;
+                }
                 var camera = _camera;
                 var xSpeed = (_previousMousePosition.X - mouse.Position.X) * Speed;
                 var ySpeed = (_previousMousePosition.Y - mouse.Position.Y) * Speed;
@@ -550,6 +562,12 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                     _previousMousePosition = new xna.Point(wrapX, wrapY);
                     return;
                 }
+            }
+
+            if (mouse.LeftButton != ButtonState.Pressed && _mouseLocked)
+            {
+                Cursor.Clip = Rectangle.Empty;
+                _mouseLocked = false;
             }
 
             _previousMousePosition = mouse.Position;
