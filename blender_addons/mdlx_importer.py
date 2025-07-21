@@ -138,16 +138,18 @@ class IMPORT_OT_mdlx(bpy.types.Operator, ImportHelper):
         bpy.ops.object.mode_set(mode='EDIT')
 
         edit_bones = arm_obj.data.edit_bones
-        bone_objs = []
+        bone_map = {}
         for b in model.bones:
             bone = edit_bones.new(f"bone_{b.index}")
-            bone.head = (0,0,0)
-            bone.tail = (0,0.1,0)
-            bone_objs.append(bone)
-        for b, bone in zip(model.bones, bone_objs):
+            bone.head = (0, 0, 0)
+            bone.tail = (0, 0.1, 0)
+            bone_map[b.index] = bone
+
+        for b in model.bones:
             if b.parent >= 0:
-                parent = bone_objs[b.parent]
-                bone.parent = parent
+                parent = bone_map.get(b.parent)
+                if parent:
+                    bone_map[b.index].parent = parent
         bpy.ops.object.mode_set(mode='OBJECT')
 
 class MDLX_PT_import_panel(bpy.types.Panel):
