@@ -57,6 +57,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
         private readonly MonoGameImGuiBootstrap _bootstrap;
         private bool _exitFlag = false;
 
+        private StreamWriter? _cameraLogWriter;
+
         private readonly Dictionary<Keys, Action> _keyMapping = new Dictionary<Keys, Action>();
         private string _gamePath;
         private string _mapName;
@@ -118,7 +120,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
         public bool MainLoop()
         {
-            _graphicsDevice.Clear(xna.Color.CornflowerBlue);
+            _graphicsDevice.Clear(xna.Color.Lime);
             ProcessKeyMapping();
             if (!_bootstrap.ImGuiWantTextInput)
                 ProcessKeyboardInput(Keyboard.GetState(), 1f / 60);
@@ -152,11 +154,20 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
             ++_globalInfo.Ticks;
 
+            if (_cameraLogWriter != null)
+            {
+                var pos = _camera.CameraPosition;
+                var rot = _camera.CameraRotationYawPitchRoll;
+                _cameraLogWriter.WriteLine($"{DateTime.Now:O},{pos.X},{pos.Y},{pos.Z},{rot.X},{rot.Y},{rot.Z}");
+                _cameraLogWriter.Flush();
+            }
+
             return _exitFlag;
         }
 
         public void Dispose()
         {
+            _cameraLogWriter?.Dispose();
         }
 
         private void MainWindow()
@@ -182,6 +193,11 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                     ForMenuItem("Import current motion from Excel", ImportExcel);
                     ForMenuItem("Export current motion to FBX", ExportFBX);
                     ForMenuItem("Export current motion to COLLADA", ExportCOLLADA);
+                    ImGui.Separator();
+                    if (_cameraLogWriter == null)
+                        ForMenuItem("Start camera log", StartCameraLog);
+                    else
+                        ForMenuItem("Stop camera log", StopCameraLog);
                     ImGui.Separator();
                     ForMenuItem("Exit", MenuFileExit);
                 });
@@ -532,5 +548,40 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
         private void ShowAboutDialog() =>
             MessageBox.Show("OpenKH is amazing.");
+
+        private void StartCameraLog()
+        {
+            FileDialog.OnSave(
+                saveTo =>
+                {
+                    try
+                    {
+                        _cameraLogWriter = new StreamWriter(saveTo);
+                        _cameraLogWriter.WriteLine("Time,X,Y,Z,Yaw,Pitch,Roll");
+                    }
+                    catch (Exception ex)
+                    {
+                        _errorMessages.Add(ex);
+                    }
+                },
+                FileDialogFilterComposer.Compose()
+                    .AddExtensions("CSV file", "csv")
+                    .AddAllFiles(),
+                $"camera-log-{DateTime.Now:yyyyMMdd_HHmmss}.csv"
+            );
+        }
+
+        private void StopCameraLog()
+        {
+            try
+            {
+                _cameraLogWriter?.Dispose();
+                _cameraLogWriter = null;
+            }
+            catch (Exception ex)
+            {
+                _errorMessages.Add(ex);
+            }
+        }
     }
 }
