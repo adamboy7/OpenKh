@@ -20,7 +20,7 @@ using System.Drawing;
 using Xe.Tools.Wpf.Dialogs;
 using static OpenKh.Tools.Common.CustomImGui.ImGuiEx;
 using xna = Microsoft.Xna.Framework;
-using System.Windows.Forms;
+using WinForms = System.Windows.Forms;
 
 namespace OpenKh.Tools.Kh2MsetMotionEditor
 {
@@ -347,7 +347,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
         private void ExportFBXCOLLADA(AssimpGeneric.FileFormat fileFormat)
         {
             if (_loadedModel.SelectedMotionIndex < 0)
-                System.Windows.Forms.MessageBox.Show("No motion selected.", "No motion selected.", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Exclamation);
+                WinForms.MessageBox.Show("No motion selected.", "No motion selected.", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Exclamation);
             else
             {
                 var selectedMotionName = _loadedModel.MotionList[_loadedModel.SelectedMotionIndex].Label;
@@ -437,7 +437,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
                                         AssimpGeneric.ExportScene(scene, fileFormat, Path.GetDirectoryName(filename)+@"\" + Path.GetFileNameWithoutExtension(filename) +"_LoopAt("+ loopFrame_ + ")"+Path.GetExtension(filename));
                                         OpenKh.Tools.Kh2MdlxEditor.Views.Main_Window.exportTextures(_loadedModel.MdlxRenderableList[0].Textures, dirPath);
-                                        System.Windows.Forms.MessageBox.Show("Export complete.", "Complete", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Information);
+                                        WinForms.MessageBox.Show("Export complete.", "Complete", WinForms.MessageBoxButtons.OK, WinForms.MessageBoxIcon.Information);
                                     }
                                 }
                             }
@@ -541,7 +541,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 {
                     var position = _bootstrap.Window.Position;
                     var client = _bootstrap.Window.ClientBounds;
-                    Cursor.Clip = new Rectangle(position.X, position.Y, client.Width, client.Height);
+                    WinForms.Cursor.Clip = new Rectangle(position.X, position.Y, client.Width, client.Height);
                     _mouseLocked = true;
                     _previousMousePosition = mouse.Position;
                 }
@@ -566,7 +566,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
             if (mouse.LeftButton != ButtonState.Pressed && _mouseLocked)
             {
-                Cursor.Clip = Rectangle.Empty;
+                WinForms.Cursor.Clip = Rectangle.Empty;
                 _mouseLocked = false;
             }
 
