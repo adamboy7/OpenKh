@@ -10,9 +10,9 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
         {
             ForEdit3("Position", () => camera.CameraPosition, x => camera.CameraPosition = x);
             ForEdit2("Rotation",
-                () => new Vector2(-camera.CameraRotationYawPitchRoll.X, -camera.CameraRotationYawPitchRoll.Y),
+                () => new Vector2(-camera.CameraRotationYawPitchRoll.X, -camera.CameraRotationYawPitchRoll.Z),
                 x => camera.CameraRotationYawPitchRoll = new Vector3(
-                    -x.X, -x.Y, camera.CameraRotationYawPitchRoll.Z));
+                    -x.X, camera.CameraRotationYawPitchRoll.Y, -x.Y));
         });
     }
 }
