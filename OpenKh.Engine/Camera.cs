@@ -132,6 +132,7 @@ namespace OpenKh.Engine
                 CameraLookAtX = Vector3.Transform(new Vector3(1, 0, 0), matrix);
                 CameraLookAtY = Vector3.Transform(new Vector3(0, 0, 1), matrix);
                 CameraLookAtZ = Vector3.Transform(new Vector3(0, 1, 0), matrix);
+                CameraUp = CameraLookAtZ;
             }
         }
 
