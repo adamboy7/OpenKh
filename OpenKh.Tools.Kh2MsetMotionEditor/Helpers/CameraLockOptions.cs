@@ -8,5 +8,6 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Helpers
         public bool LockPosX { get; set; }
         public bool LockPosY { get; set; }
         public bool LockPosZ { get; set; }
+        public bool FollowRootBone { get; set; }
     }
 }

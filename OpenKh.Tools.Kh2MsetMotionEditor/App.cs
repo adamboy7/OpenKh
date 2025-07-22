@@ -133,6 +133,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 ProcessKeyboardInput(Keyboard.GetState(), 1f / 60);
             if (!_bootstrap.ImGuiWantCaptureMouse)
                 ProcessMouseInput(Mouse.GetState());
+            ApplyFollowRootBone();
 
             ImGui.PushStyleColor(ImGuiCol.WindowBg, BgUiColor);
             ForControl(ImGui.BeginMainMenuBar, ImGui.EndMainMenuBar, MainMenu);
@@ -591,6 +592,38 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             }
 
             _previousMousePosition = mouse.Position;
+        }
+
+        private void ApplyFollowRootBone()
+        {
+            if (!_cameraLockOptions.FollowRootBone)
+                return;
+
+            if (_loadedModel.PoseProvider == null)
+                return;
+
+            var pose = _loadedModel.PoseProvider(_loadedModel.FrameTime);
+            if (pose.Fk.Length == 0)
+                return;
+
+            var target = pose.Fk[0].Translation;
+
+            var cam = _camera;
+            var prevRot = cam.CameraRotationYawPitchRoll;
+
+            var diff = target - cam.CameraPosition;
+
+            var yaw = (float)(Math.Atan2(-diff.Z, diff.X) * 180.0 / Math.PI);
+            var pitch = (float)(Math.Atan2(diff.Y, Math.Sqrt(diff.X * diff.X + diff.Z * diff.Z)) * 180.0 / Math.PI);
+
+            var newRot = cam.CameraRotationYawPitchRoll;
+            if (!_cameraLockOptions.LockRotX)
+                newRot.X = yaw;
+            if (!_cameraLockOptions.LockRotZ)
+                newRot.Z = -pitch;
+            cam.CameraRotationYawPitchRoll = newRot;
+
+            cam.CameraLookAt = target;
         }
 
         public static void ShowError(string message, string title = "Error") =>
