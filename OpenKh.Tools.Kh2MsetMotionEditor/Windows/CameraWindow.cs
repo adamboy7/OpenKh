@@ -10,7 +10,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
     {
         public static bool Run(Camera camera) => Run(camera, new CameraLockOptions());
 
-        public static bool Run(Camera camera, CameraLockOptions locks) => ForHeader("Camera", () =>
+        public static bool Run(Camera camera, CameraLockOptions locks)
         {
             ForEdit("Lock X rotation", () => locks.LockRotX, x => locks.LockRotX = x);
             ForEdit("Lock Z rotation", () => locks.LockRotZ, x => locks.LockRotZ = x);
@@ -41,9 +41,13 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
             camera.CameraPosition = posAfter;
 
             var rotAfter = camera.CameraRotationYawPitchRoll;
-            if (locks.LockRotX && !(rotChanged && rotVec.X != -rotBefore.X)) rotAfter.X = rotBefore.X;
-            if (locks.LockRotZ && !(rotChanged && rotVec.Y != -rotBefore.Z)) rotAfter.Z = rotBefore.Z;
+            if (locks.LockRotX && !(rotChanged && rotVec.X != -rotBefore.X))
+                rotAfter.X = rotBefore.X;
+            if (locks.LockRotZ && !(rotChanged && rotVec.Y != -rotBefore.Z))
+                rotAfter.Z = rotBefore.Z;
             camera.CameraRotationYawPitchRoll = rotAfter;
-        });
+
+            return true;
+        }
     }
 }
