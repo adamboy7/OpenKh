@@ -9,5 +9,9 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Helpers
         public bool LockPosY { get; set; }
         public bool LockPosZ { get; set; }
         public bool FollowRootBone { get; set; }
+
+        public bool MaintainDistance { get; set; }
+
+        public float Distance { get; set; } = 5f;
     }
 }

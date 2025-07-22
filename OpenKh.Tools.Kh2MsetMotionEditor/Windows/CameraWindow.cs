@@ -47,6 +47,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
             ForHeader("Camera Locks", () =>
             {
                 ForEdit("Follow root bone", () => locks.FollowRootBone, x => locks.FollowRootBone = x);
+                ForEdit("Maintain distance", () => locks.MaintainDistance, x => locks.MaintainDistance = x);
+                ForEdit("Distance", () => locks.Distance, x => locks.Distance = x);
                 ForEdit("Lock X rotation", () => locks.LockRotX, x => locks.LockRotX = x);
                 ForEdit("Lock Y rotation", () => locks.LockRotY, x => locks.LockRotY = x);
                 ForEdit("Lock Z rotation", () => locks.LockRotZ, x => locks.LockRotZ = x);

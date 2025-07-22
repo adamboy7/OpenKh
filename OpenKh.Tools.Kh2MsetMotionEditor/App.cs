@@ -618,6 +618,24 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
             var diff = target - cam.CameraPosition;
 
+            if (_cameraLockOptions.MaintainDistance)
+            {
+                var distance = _cameraLockOptions.Distance;
+                if (distance <= 0)
+                    distance = diff.Length();
+
+                var dir = Vector3.Normalize(diff);
+                var desired = target - dir * distance;
+
+                var newPos = cam.CameraPosition;
+                if (!_cameraLockOptions.LockPosX) newPos.X = desired.X;
+                if (!_cameraLockOptions.LockPosY) newPos.Y = desired.Y;
+                if (!_cameraLockOptions.LockPosZ) newPos.Z = desired.Z;
+                cam.CameraPosition = newPos;
+
+                diff = target - cam.CameraPosition;
+            }
+
             var yaw = (float)(Math.Atan2(-diff.Z, diff.X) * 180.0 / Math.PI);
             var pitch = (float)(Math.Atan2(diff.Y, Math.Sqrt(diff.X * diff.X + diff.Z * diff.Z)) * 180.0 / Math.PI);
 
