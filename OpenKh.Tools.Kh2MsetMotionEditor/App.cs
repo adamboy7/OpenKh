@@ -540,6 +540,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
             var newRot = camera.CameraRotationYawPitchRoll;
             if (_cameraLockOptions.LockRotX) newRot.X = prevRot.X;
+            if (_cameraLockOptions.LockRotY) newRot.Y = prevRot.Y;
             if (_cameraLockOptions.LockRotZ) newRot.Z = prevRot.Z;
             camera.CameraRotationYawPitchRoll = newRot;
         }
@@ -566,6 +567,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
                 var rotAfter = camera.CameraRotationYawPitchRoll;
                 if (_cameraLockOptions.LockRotX) rotAfter.X = prevRot.X;
+                if (_cameraLockOptions.LockRotY) rotAfter.Y = prevRot.Y;
                 if (_cameraLockOptions.LockRotZ) rotAfter.Z = prevRot.Z;
                 camera.CameraRotationYawPitchRoll = rotAfter;
 
