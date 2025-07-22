@@ -109,6 +109,11 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Usecases.InsideTools
                 {
                     _settings.ViewRootPosition = true;
                 }
+                ImGui.SameLine();
+                if (ImGui.Button("Camera"))
+                {
+                    _settings.ViewCamera = true;
+                }
 
                 if (saved)
                 {
