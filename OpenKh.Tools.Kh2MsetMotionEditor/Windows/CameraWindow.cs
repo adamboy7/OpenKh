@@ -32,9 +32,12 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
                 camera.CameraRotationYawPitchRoll = new Vector3(-rotVec.X, rotBefore.Y, -rotVec.Y);
 
             var posAfter = camera.CameraPosition;
-            if (locks.LockPosX && !posChanged) posAfter.X = posBefore.X;
-            if (locks.LockPosY && !posChanged) posAfter.Y = posBefore.Y;
-            if (locks.LockPosZ && !posChanged) posAfter.Z = posBefore.Z;
+            if (locks.LockPosX && !(posChanged && posVec.X != posBefore.X))
+                posAfter.X = posBefore.X;
+            if (locks.LockPosY && !(posChanged && posVec.Y != posBefore.Y))
+                posAfter.Y = posBefore.Y;
+            if (locks.LockPosZ && !(posChanged && posVec.Z != posBefore.Z))
+                posAfter.Z = posBefore.Z;
             camera.CameraPosition = posAfter;
 
             var rotAfter = camera.CameraRotationYawPitchRoll;
