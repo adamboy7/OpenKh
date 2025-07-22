@@ -114,6 +114,11 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Usecases.InsideTools
                 {
                     _settings.ViewCamera = true;
                 }
+                ImGui.SameLine();
+                if (ImGui.Button("Actions"))
+                {
+                    _settings.ViewActions = true;
+                }
 
                 if (saved)
                 {

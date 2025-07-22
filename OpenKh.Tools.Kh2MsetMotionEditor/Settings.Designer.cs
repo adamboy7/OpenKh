@@ -346,5 +346,17 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor {
                 this["ViewFCurvesGrid"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool ViewActions {
+            get {
+                return ((bool)(this["ViewActions"]));
+            }
+            set {
+                this["ViewActions"] = value;
+            }
+        }
     }
 }

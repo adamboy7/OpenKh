@@ -120,6 +120,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.DependencyInjection
             self.AddSingleton<IWindowRunnableProvider, FCurvesFkIkGridManagerWindow>();
             self.AddSingleton<IWindowRunnableProvider, NormalMessagesWindowUsecase>();
             self.AddSingleton<IWindowRunnableProvider, CameraWindowUsecase>();
+            self.AddSingleton<IWindowRunnableProvider, ActionsWindowUsecase>();
 
 
 

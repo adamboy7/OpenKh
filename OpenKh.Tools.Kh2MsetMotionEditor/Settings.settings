@@ -80,8 +80,11 @@
     <Setting Name="ViewRootPosition" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>
-    <Setting Name="ViewFCurvesGrid" Type="System.Boolean" Scope="User">
+  <Setting Name="ViewFCurvesGrid" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
-    </Setting>
+  </Setting>
+  <Setting Name="ViewActions" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+  </Setting>
   </Settings>
 </SettingsFile>

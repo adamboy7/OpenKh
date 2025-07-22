@@ -264,6 +264,11 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                         _settings.ViewFCurveKey = it;
                         _settings.Save();
                     });
+                    ForMenuCheck("Actions", () => _settings.ViewActions, it =>
+                    {
+                        _settings.ViewActions = it;
+                        _settings.Save();
+                    });
                     ForMenuCheck("RootPosition", () => _settings.ViewRootPosition, it =>
                     {
                         _settings.ViewRootPosition = it;
