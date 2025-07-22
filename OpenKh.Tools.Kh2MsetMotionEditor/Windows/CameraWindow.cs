@@ -19,22 +19,27 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
             ForEdit("Lock Z position", () => locks.LockPosZ, x => locks.LockPosZ = x);
 
             var posBefore = camera.CameraPosition;
-            ForEdit3("Position", () => camera.CameraPosition, x => camera.CameraPosition = x);
             var rotBefore = camera.CameraRotationYawPitchRoll;
-            ForEdit2("Rotation",
-                () => new Vector2(-camera.CameraRotationYawPitchRoll.X, -camera.CameraRotationYawPitchRoll.Z),
-                x => camera.CameraRotationYawPitchRoll = new Vector3(
-                    -x.X, camera.CameraRotationYawPitchRoll.Y, -x.Y));
+
+            var posVec = new Vector3(posBefore.X, posBefore.Y, posBefore.Z);
+            var posChanged = ImGui.DragFloat3("Position", ref posVec, 1.0f);
+            if (posChanged)
+                camera.CameraPosition = posVec;
+
+            var rotVec = new Vector2(-rotBefore.X, -rotBefore.Z);
+            var rotChanged = ImGui.DragFloat2("Rotation", ref rotVec, 1.0f);
+            if (rotChanged)
+                camera.CameraRotationYawPitchRoll = new Vector3(-rotVec.X, rotBefore.Y, -rotVec.Y);
 
             var posAfter = camera.CameraPosition;
-            if (locks.LockPosX) posAfter.X = posBefore.X;
-            if (locks.LockPosY) posAfter.Y = posBefore.Y;
-            if (locks.LockPosZ) posAfter.Z = posBefore.Z;
+            if (locks.LockPosX && !posChanged) posAfter.X = posBefore.X;
+            if (locks.LockPosY && !posChanged) posAfter.Y = posBefore.Y;
+            if (locks.LockPosZ && !posChanged) posAfter.Z = posBefore.Z;
             camera.CameraPosition = posAfter;
 
             var rotAfter = camera.CameraRotationYawPitchRoll;
-            if (locks.LockRotX) rotAfter.X = rotBefore.X;
-            if (locks.LockRotZ) rotAfter.Z = rotBefore.Z;
+            if (locks.LockRotX && !(rotChanged && rotVec.X != -rotBefore.X)) rotAfter.X = rotBefore.X;
+            if (locks.LockRotZ && !(rotChanged && rotVec.Y != -rotBefore.Z)) rotAfter.Z = rotBefore.Z;
             camera.CameraRotationYawPitchRoll = rotAfter;
         });
     }
