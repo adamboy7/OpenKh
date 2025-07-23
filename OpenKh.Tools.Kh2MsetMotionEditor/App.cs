@@ -626,7 +626,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 if (distance <= 0)
                     distance = Vector3.Distance(target, cam.CameraPosition);
 
-                var matrix = Matrix4x4.CreateFromYawPitchRoll(
+                var matrix = System.Numerics.Matrix4x4.CreateFromYawPitchRoll(
                     (float)(rot.X * Math.PI / 180.0),
                     (float)(rot.Y * Math.PI / 180.0),
                     (float)(rot.Z * Math.PI / 180.0));
