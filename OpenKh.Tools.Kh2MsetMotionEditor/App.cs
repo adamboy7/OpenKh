@@ -528,9 +528,9 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 if (keyboard.IsKeyDown(Keys.A))
                     camera.CameraRotationYawPitchRoll += new Vector3(1 * speed, 0, 0);
                 if (keyboard.IsKeyDown(Keys.Q))
-                    camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * speed);
+                    camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
                 if (keyboard.IsKeyDown(Keys.E))
-                    camera.CameraRotationYawPitchRoll -= new Vector3(0, 0, 1 * speed);
+                    camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
             }
             else
             {
@@ -635,28 +635,47 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
             var cam = _camera;
 
-            if (_cameraLockOptions.MaintainDistance)
-            {
-                var distance = _cameraLockOptions.Distance;
-                var rot = cam.CameraRotationYawPitchRoll;
-                if (distance <= 0)
-                    distance = Vector3.Distance(target, cam.CameraPosition);
-
-                var matrix = System.Numerics.Matrix4x4.CreateFromYawPitchRoll(
-                    (float)(rot.X * Math.PI / 180.0),
-                    (float)(rot.Y * Math.PI / 180.0),
-                    (float)(rot.Z * Math.PI / 180.0));
-                var offset = Vector3.Transform(new Vector3(distance, 0, 0), matrix);
-                var desired = target - offset;
-
-                var newPos = cam.CameraPosition;
-                if (!_cameraLockOptions.LockPosX) newPos.X = desired.X;
-                if (!_cameraLockOptions.LockPosY) newPos.Y = desired.Y;
-                if (!_cameraLockOptions.LockPosZ) newPos.Z = desired.Z;
-                cam.CameraPosition = newPos;
-            }
             if (_cameraLockOptions.FollowRootBone)
+            {
+                if (_cameraLockOptions.MaintainDistance)
+                {
+                    var distance = _cameraLockOptions.Distance;
+                    if (distance <= 0)
+                        distance = Vector3.Distance(target, cam.CameraPosition);
+
+                    var rot = cam.CameraRotationYawPitchRoll;
+                    var matrix = System.Numerics.Matrix4x4.CreateFromYawPitchRoll(
+                        (float)(rot.X * Math.PI / 180.0),
+                        (float)(rot.Y * Math.PI / 180.0),
+                        (float)(rot.Z * Math.PI / 180.0));
+                    var offset = Vector3.Transform(new Vector3(distance, 0, 0), matrix);
+                    var desired = target - offset;
+
+                    var newPos = cam.CameraPosition;
+                    if (!_cameraLockOptions.LockPosX) newPos.X = desired.X;
+                    if (!_cameraLockOptions.LockPosY) newPos.Y = desired.Y;
+                    if (!_cameraLockOptions.LockPosZ) newPos.Z = desired.Z;
+                    cam.CameraPosition = newPos;
+                }
+
                 cam.CameraLookAt = target;
+            }
+            else if (_cameraLockOptions.MaintainDistance && _cameraLockOptions.Distance > 0)
+            {
+                var diff = cam.CameraPosition - target;
+                var len = diff.Length();
+                if (len > _cameraLockOptions.Distance)
+                {
+                    diff = Vector3.Normalize(diff) * _cameraLockOptions.Distance;
+                    var desired = target + diff;
+
+                    var newPos = cam.CameraPosition;
+                    if (!_cameraLockOptions.LockPosX) newPos.X = desired.X;
+                    if (!_cameraLockOptions.LockPosY) newPos.Y = desired.Y;
+                    if (!_cameraLockOptions.LockPosZ) newPos.Z = desired.Z;
+                    cam.CameraPosition = newPos;
+                }
+            }
         }
 
         public static void ShowError(string message, string title = "Error") =>
