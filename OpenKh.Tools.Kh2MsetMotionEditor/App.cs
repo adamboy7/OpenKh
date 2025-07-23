@@ -528,9 +528,9 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 if (keyboard.IsKeyDown(Keys.A))
                     camera.CameraRotationYawPitchRoll += new Vector3(1 * speed, 0, 0);
                 if (keyboard.IsKeyDown(Keys.Q))
-                    _cameraLockOptions.Distance = Math.Max(0.1f, _cameraLockOptions.Distance - moveSpeed * 5);
+                    camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * speed);
                 if (keyboard.IsKeyDown(Keys.E))
-                    _cameraLockOptions.Distance += moveSpeed * 5;
+                    camera.CameraRotationYawPitchRoll -= new Vector3(0, 0, 1 * speed);
             }
             else
             {
