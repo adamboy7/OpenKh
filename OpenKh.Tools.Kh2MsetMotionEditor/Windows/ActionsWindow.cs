@@ -17,6 +17,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
                 {
                     locks.FollowRootBone = true;
                     locks.MaintainDistance = true;
+                    locks.ClampPitch = true;
                 }
             });
 
