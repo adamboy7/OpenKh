@@ -516,18 +516,37 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             var camera = _camera;
             var prevPos = camera.CameraPosition;
             var prevRot = camera.CameraRotationYawPitchRoll;
-            if (keyboard.IsKeyDown(Keys.W))
-                camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtX, moveSpeed * 5);
-            if (keyboard.IsKeyDown(Keys.S))
-                camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtX, moveSpeed * 5);
-            if (keyboard.IsKeyDown(Keys.D))
-                camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtY, moveSpeed * 5);
-            if (keyboard.IsKeyDown(Keys.A))
-                camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtY, moveSpeed * 5);
-            if (keyboard.IsKeyDown(Keys.Q))
-                camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
-            if (keyboard.IsKeyDown(Keys.E))
-                camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
+
+            if (_cameraLockOptions.FollowRootBone)
+            {
+                if (keyboard.IsKeyDown(Keys.W))
+                    camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * speed);
+                if (keyboard.IsKeyDown(Keys.S))
+                    camera.CameraRotationYawPitchRoll -= new Vector3(0, 0, 1 * speed);
+                if (keyboard.IsKeyDown(Keys.D))
+                    camera.CameraRotationYawPitchRoll -= new Vector3(1 * speed, 0, 0);
+                if (keyboard.IsKeyDown(Keys.A))
+                    camera.CameraRotationYawPitchRoll += new Vector3(1 * speed, 0, 0);
+                if (keyboard.IsKeyDown(Keys.Q))
+                    _cameraLockOptions.Distance = Math.Max(0.1f, _cameraLockOptions.Distance - moveSpeed * 5);
+                if (keyboard.IsKeyDown(Keys.E))
+                    _cameraLockOptions.Distance += moveSpeed * 5;
+            }
+            else
+            {
+                if (keyboard.IsKeyDown(Keys.W))
+                    camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtX, moveSpeed * 5);
+                if (keyboard.IsKeyDown(Keys.S))
+                    camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtX, moveSpeed * 5);
+                if (keyboard.IsKeyDown(Keys.D))
+                    camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtY, moveSpeed * 5);
+                if (keyboard.IsKeyDown(Keys.A))
+                    camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtY, moveSpeed * 5);
+                if (keyboard.IsKeyDown(Keys.Q))
+                    camera.CameraPosition += Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
+                if (keyboard.IsKeyDown(Keys.E))
+                    camera.CameraPosition -= Vector3.Multiply(camera.CameraLookAtZ, moveSpeed * 5);
+            }
 
             if (keyboard.IsKeyDown(Keys.Up))
                 camera.CameraRotationYawPitchRoll += new Vector3(0, 0, 1 * speed);
