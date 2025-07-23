@@ -548,6 +548,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             if (_cameraLockOptions.LockRotX) newRot.X = prevRot.X;
             if (_cameraLockOptions.LockRotY) newRot.Y = prevRot.Y;
             if (_cameraLockOptions.LockRotZ) newRot.Z = prevRot.Z;
+            if (_cameraLockOptions.ClampPitch)
+                newRot.Z = Math.Clamp(newRot.Z, -89f, 89f);
             camera.CameraRotationYawPitchRoll = newRot;
         }
 
@@ -575,6 +577,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 if (_cameraLockOptions.LockRotX) rotAfter.X = prevRot.X;
                 if (_cameraLockOptions.LockRotY) rotAfter.Y = prevRot.Y;
                 if (_cameraLockOptions.LockRotZ) rotAfter.Z = prevRot.Z;
+                if (_cameraLockOptions.ClampPitch)
+                    rotAfter.Z = Math.Clamp(rotAfter.Z, -89f, 89f);
                 camera.CameraRotationYawPitchRoll = rotAfter;
 
                 var viewport = _graphicsDevice.Viewport;
@@ -614,37 +618,27 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
             var target = pose.Fk[0].Translation;
 
             var cam = _camera;
-            var prevRot = cam.CameraRotationYawPitchRoll;
-
-            var diff = target - cam.CameraPosition;
 
             if (_cameraLockOptions.MaintainDistance)
             {
                 var distance = _cameraLockOptions.Distance;
+                var rot = cam.CameraRotationYawPitchRoll;
                 if (distance <= 0)
-                    distance = diff.Length();
+                    distance = Vector3.Distance(target, cam.CameraPosition);
 
-                var dir = Vector3.Normalize(diff);
-                var desired = target - dir * distance;
+                var matrix = Matrix4x4.CreateFromYawPitchRoll(
+                    (float)(rot.X * Math.PI / 180.0),
+                    (float)(rot.Y * Math.PI / 180.0),
+                    (float)(rot.Z * Math.PI / 180.0));
+                var offset = Vector3.Transform(new Vector3(distance, 0, 0), matrix);
+                var desired = target - offset;
 
                 var newPos = cam.CameraPosition;
                 if (!_cameraLockOptions.LockPosX) newPos.X = desired.X;
                 if (!_cameraLockOptions.LockPosY) newPos.Y = desired.Y;
                 if (!_cameraLockOptions.LockPosZ) newPos.Z = desired.Z;
                 cam.CameraPosition = newPos;
-
-                diff = target - cam.CameraPosition;
             }
-
-            var yaw = (float)(Math.Atan2(-diff.Z, diff.X) * 180.0 / Math.PI);
-            var pitch = (float)(Math.Atan2(diff.Y, Math.Sqrt(diff.X * diff.X + diff.Z * diff.Z)) * 180.0 / Math.PI);
-
-            var newRot = cam.CameraRotationYawPitchRoll;
-            if (!_cameraLockOptions.LockRotX)
-                newRot.X = yaw;
-            if (!_cameraLockOptions.LockRotZ)
-                newRot.Z = -pitch;
-            cam.CameraRotationYawPitchRoll = newRot;
 
             cam.CameraLookAt = target;
         }

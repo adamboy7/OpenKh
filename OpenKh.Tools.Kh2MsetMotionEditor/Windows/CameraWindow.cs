@@ -53,6 +53,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Windows
                 ForEdit("Lock X position", () => locks.LockPosX, x => locks.LockPosX = x);
                 ForEdit("Lock Y position", () => locks.LockPosY, x => locks.LockPosY = x);
                 ForEdit("Lock Z position", () => locks.LockPosZ, x => locks.LockPosZ = x);
+                ForEdit("Clamp pitch", () => locks.ClampPitch, x => locks.ClampPitch = x);
             });
 
             return true;

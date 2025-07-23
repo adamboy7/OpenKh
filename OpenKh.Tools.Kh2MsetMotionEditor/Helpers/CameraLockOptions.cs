@@ -13,5 +13,7 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor.Helpers
         public bool MaintainDistance { get; set; }
 
         public float Distance { get; set; } = 5f;
+
+        public bool ClampPitch { get; set; }
     }
 }
