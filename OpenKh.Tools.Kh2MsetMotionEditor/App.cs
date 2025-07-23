@@ -624,9 +624,6 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
 
         private void ApplyFollowRootBone()
         {
-            if (!_cameraLockOptions.FollowRootBone)
-                return;
-
             if (_loadedModel.PoseProvider == null)
                 return;
 
@@ -658,8 +655,8 @@ namespace OpenKh.Tools.Kh2MsetMotionEditor
                 if (!_cameraLockOptions.LockPosZ) newPos.Z = desired.Z;
                 cam.CameraPosition = newPos;
             }
-
-            cam.CameraLookAt = target;
+            if (_cameraLockOptions.FollowRootBone)
+                cam.CameraLookAt = target;
         }
 
         public static void ShowError(string message, string title = "Error") =>
