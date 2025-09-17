@@ -37,6 +37,7 @@ namespace OpenKh.Tools.Kh2MapStudio
             .AddAllFiles();
 
         private const string SelectArdFilesCaption = "Select ard files";
+        private static readonly HashSet<char> InvalidFileNameChars = new HashSet<char>(Path.GetInvalidFileNameChars());
 
         private readonly Vector4 BgUiColor = new Vector4(0.0f, 0.0f, 0.0f, 0.5f);
         private readonly MonoGameImGuiBootstrap _bootstrap;
@@ -549,15 +550,14 @@ namespace OpenKh.Tools.Kh2MapStudio
 
                             exportedSpawnScripts++;
 
-                            var programDirectory = Path.Combine(mapDirectory, entry.Name);
-                            Directory.CreateDirectory(programDirectory);
+                            var programType = SanitizeFileNameComponent(entry.Name);
 
                             foreach (var script in scripts)
                             {
                                 var programText = AreaDataScript.Decompile(new[] { script });
                                 var programFileName = Path.Combine(
-                                    programDirectory,
-                                    $"program-{script.ProgramId:X2}.areadataprogram");
+                                    mapDirectory,
+                                    $"{programType}_program-{script.ProgramId:X2}.areadataprogram");
                                 File.WriteAllText(programFileName, programText);
                                 exportedPrograms++;
                             }
@@ -600,6 +600,22 @@ namespace OpenKh.Tools.Kh2MapStudio
             }
 
             ShowInfo(string.Join("\n", lines) + '.', title);
+        }
+
+        private static string SanitizeFileNameComponent(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return "unknown";
+            }
+
+            var sanitized = new string(
+                value
+                    .Trim()
+                    .Select(ch => InvalidFileNameChars.Contains(ch) ? '_' : ch)
+                    .ToArray());
+
+            return string.IsNullOrEmpty(sanitized) ? "unknown" : sanitized;
         }
 
         private void MassExportSpawnPoints(string destinationFolder)
