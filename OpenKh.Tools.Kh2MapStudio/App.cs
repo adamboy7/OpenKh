@@ -367,13 +367,16 @@ namespace OpenKh.Tools.Kh2MapStudio
                     ForMenuItem("Save map+ard", "CTRL+S", MenuFileSave, IsOpen);
                     ForMenuItem("Save map as...", MenuFileSaveMapAs, IsOpen);
                     ForMenuItem("Save ard as...", MenuFileSaveArdAs, IsOpen);
-                    ForMenuItem("Mass Export", MenuFileMassExport, IsGameOpen);
                     ImGui.Separator();
                     ForMenu("Export", () =>
                     {
                         ForMenuItem("Map Collision", ExportMapCollision, _mapRenderer.ShowMapCollision.HasValue);
                         ForMenuItem("Camera Collision", ExportCameraCollision, _mapRenderer.ShowCameraCollision.HasValue);
                         ForMenuItem("Light Collision", ExportLightCollision, _mapRenderer.ShowLightCollision.HasValue);
+                    });
+                    ForMenu("Mass Export", () =>
+                    {
+                        ForMenuItem("Spawnpoints", MenuFileMassExportSpawnpoints, IsGameOpen);
                     });
                     ImGui.Separator();
                     ForMenuItem("Exit", MenuFileExit);
@@ -458,7 +461,7 @@ namespace OpenKh.Tools.Kh2MapStudio
             FileDialog.OnSave(_mapRenderer.SaveArd, ArdFilter, defaultName);
         }
 
-        private void MenuFileMassExport() => FileDialog.OnFolder(folderPath =>
+        private void MenuFileMassExportSpawnpoints() => FileDialog.OnFolder(folderPath =>
         {
             try
             {
