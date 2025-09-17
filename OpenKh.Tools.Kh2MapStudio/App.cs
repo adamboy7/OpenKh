@@ -477,6 +477,13 @@ namespace OpenKh.Tools.Kh2MapStudio
                 return;
             }
 
+            const string DefaultRegionLabel = "(default)";
+
+            var exportedMaps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var exportedRegions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var exportedArdFiles = 0;
+            var exportedSpawnGroups = 0;
+
             foreach (var mapArds in _mapArdsList)
             {
                 foreach (var ardRelative in mapArds.ArdFilesRelative)
@@ -502,6 +509,11 @@ namespace OpenKh.Tools.Kh2MapStudio
                             continue;
                         }
 
+                        exportedArdFiles++;
+                        exportedMaps.Add(mapArds.MapName);
+
+                        exportedRegions.Add(string.IsNullOrEmpty(region) ? DefaultRegionLabel : region);
+
                         var regionRoot = string.IsNullOrEmpty(region)
                             ? destinationFolder
                             : Path.Combine(destinationFolder, region);
@@ -513,6 +525,7 @@ namespace OpenKh.Tools.Kh2MapStudio
                             var spawnPoints = SpawnPoint.Read(entry.Stream.SetPosition(0));
                             var fileName = Path.Combine(mapDirectory, $"{entry.Name}.yml");
                             File.WriteAllText(fileName, Helpers.YamlSerialize(spawnPoints));
+                            exportedSpawnGroups++;
                         }
                     }
                     finally
@@ -524,7 +537,36 @@ namespace OpenKh.Tools.Kh2MapStudio
                     }
                 }
             }
+
+            var title = "Mass Export";
+
+            if (exportedSpawnGroups == 0)
+            {
+                ShowInfo("No spawn points were exported.", title);
+                return;
+            }
+
+            var regionList = exportedRegions
+                .OrderBy(regionName => regionName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var lines = new List<string>
+            {
+                $"Exported {exportedSpawnGroups} {Pluralize(exportedSpawnGroups, "spawn group")} " +
+                $"from {exportedArdFiles} {Pluralize(exportedArdFiles, "ARD file")} " +
+                $"across {exportedMaps.Count} {Pluralize(exportedMaps.Count, "map")} " +
+                $"in {regionList.Length} {Pluralize(regionList.Length, "region")}"
+            };
+
+            if (regionList.Length > 0)
+            {
+                lines.Add($"Regions: {string.Join(", ", regionList)}");
+            }
+
+            ShowInfo(string.Join("\n", lines) + '.', title);
         }
+
+        private static string Pluralize(int count, string word) => count == 1 ? word : word + "s";
 
         private void ExportMapCollision() => FileDialog.OnSave(fileName =>
         {
@@ -690,6 +732,9 @@ namespace OpenKh.Tools.Kh2MapStudio
 
         public static void ShowError(string message, string title = "Error") =>
             MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Error);
+
+        public static void ShowInfo(string message, string title = "Info") =>
+            MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
 
         private void ShowAboutDialog() =>
             //MessageBox.Show("OpenKH is amazing.");
