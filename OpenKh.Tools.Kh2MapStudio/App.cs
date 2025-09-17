@@ -376,6 +376,7 @@ namespace OpenKh.Tools.Kh2MapStudio
                     });
                     ForMenu("Mass Export", () =>
                     {
+                        ForMenuItem("AreaData programs", MenuFileMassExportAreaDataPrograms, IsGameOpen);
                         ForMenuItem("Spawnpoints", MenuFileMassExportSpawnpoints, IsGameOpen);
                     });
                     ImGui.Separator();
@@ -461,6 +462,18 @@ namespace OpenKh.Tools.Kh2MapStudio
             FileDialog.OnSave(_mapRenderer.SaveArd, ArdFilter, defaultName);
         }
 
+        private void MenuFileMassExportAreaDataPrograms() => FileDialog.OnFolder(folderPath =>
+        {
+            try
+            {
+                MassExportAreaDataPrograms(folderPath);
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+            }
+        });
+
         private void MenuFileMassExportSpawnpoints() => FileDialog.OnFolder(folderPath =>
         {
             try
@@ -472,6 +485,122 @@ namespace OpenKh.Tools.Kh2MapStudio
                 ShowError(ex.Message);
             }
         });
+
+        private void MassExportAreaDataPrograms(string destinationFolder)
+        {
+            if (string.IsNullOrEmpty(destinationFolder))
+            {
+                return;
+            }
+
+            const string DefaultRegionLabel = "(default)";
+
+            var exportedMaps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var exportedRegions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var exportedArdFiles = 0;
+            var exportedSpawnScripts = 0;
+            var exportedPrograms = 0;
+
+            foreach (var mapArds in _mapArdsList)
+            {
+                foreach (var ardRelative in mapArds.ArdFilesRelative)
+                {
+                    var ardFilePath = Path.Combine(_ardPath, ardRelative);
+                    if (!File.Exists(ardFilePath))
+                    {
+                        continue;
+                    }
+
+                    var region = Path.GetDirectoryName(ardRelative) ?? string.Empty;
+
+                    var barEntries = File.OpenRead(ardFilePath).Using(Bar.Read);
+
+                    try
+                    {
+                        var programEntries = barEntries
+                            .Where(entry => entry.Type == Bar.EntryType.AreaDataScript && entry.Stream.Length > 0)
+                            .ToList();
+
+                        if (programEntries.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        exportedArdFiles++;
+                        exportedMaps.Add(mapArds.MapName);
+                        exportedRegions.Add(string.IsNullOrEmpty(region) ? DefaultRegionLabel : region);
+
+                        var regionRoot = string.IsNullOrEmpty(region)
+                            ? destinationFolder
+                            : Path.Combine(destinationFolder, region);
+                        var mapDirectory = Path.Combine(regionRoot, "ard", mapArds.MapName);
+                        Directory.CreateDirectory(mapDirectory);
+
+                        foreach (var entry in programEntries)
+                        {
+                            var scripts = AreaDataScript
+                                .Read(entry.Stream.SetPosition(0))
+                                .ToList();
+
+                            if (scripts.Count == 0)
+                            {
+                                continue;
+                            }
+
+                            exportedSpawnScripts++;
+
+                            var programDirectory = Path.Combine(mapDirectory, entry.Name);
+                            Directory.CreateDirectory(programDirectory);
+
+                            foreach (var script in scripts)
+                            {
+                                var programText = AreaDataScript.Decompile(new[] { script });
+                                var programFileName = Path.Combine(
+                                    programDirectory,
+                                    $"program-{script.ProgramId:X2}.areadataprogram");
+                                File.WriteAllText(programFileName, programText);
+                                exportedPrograms++;
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        foreach (var entry in barEntries)
+                        {
+                            entry.Stream?.Dispose();
+                        }
+                    }
+                }
+            }
+
+            var title = "Mass Export";
+
+            if (exportedPrograms == 0)
+            {
+                ShowInfo("No AreaData programs were exported.", title);
+                return;
+            }
+
+            var regionList = exportedRegions
+                .OrderBy(regionName => regionName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var lines = new List<string>
+            {
+                $"Exported {exportedPrograms} {Pluralize(exportedPrograms, "program")} " +
+                $"from {exportedSpawnScripts} {Pluralize(exportedSpawnScripts, "spawn script")} " +
+                $"across {exportedArdFiles} {Pluralize(exportedArdFiles, "ARD file")} " +
+                $"in {exportedMaps.Count} {Pluralize(exportedMaps.Count, "map")} " +
+                $"within {regionList.Length} {Pluralize(regionList.Length, "region")}",
+            };
+
+            if (regionList.Length > 0)
+            {
+                lines.Add($"Regions: {string.Join(", ", regionList)}");
+            }
+
+            ShowInfo(string.Join("\n", lines) + '.', title);
+        }
 
         private void MassExportSpawnPoints(string destinationFolder)
         {
