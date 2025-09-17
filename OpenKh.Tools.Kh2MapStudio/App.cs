@@ -377,6 +377,8 @@ namespace OpenKh.Tools.Kh2MapStudio
                     ForMenu("Mass Export", () =>
                     {
                         ForMenuItem("Spawnpoints", MenuFileMassExportSpawnpoints, IsGameOpen);
+                        ForMenuItem("Spawnpoints (.areadataspawn)", MenuFileMassExportAreaDataSpawns, IsGameOpen);
+                        ForMenuItem("Spawn scripts (.areadatascript)", MenuFileMassExportAreaDataScripts, IsGameOpen);
                     });
                     ImGui.Separator();
                     ForMenuItem("Exit", MenuFileExit);
@@ -465,7 +467,13 @@ namespace OpenKh.Tools.Kh2MapStudio
         {
             try
             {
-                MassExportSpawnPoints(folderPath);
+                MassExportBarEntries(
+                    folderPath,
+                    Bar.EntryType.AreaDataSpawn,
+                    ".yml",
+                    entry => Helpers.YamlSerialize(SpawnPoint.Read(entry.Stream.SetPosition(0))),
+                    "spawn group",
+                    "spawn point");
             }
             catch (Exception ex)
             {
@@ -473,19 +481,61 @@ namespace OpenKh.Tools.Kh2MapStudio
             }
         });
 
-        private void MassExportSpawnPoints(string destinationFolder)
+        private void MenuFileMassExportAreaDataSpawns() => FileDialog.OnFolder(folderPath =>
+        {
+            try
+            {
+                MassExportBarEntries(
+                    folderPath,
+                    Bar.EntryType.AreaDataSpawn,
+                    ".areadataspawn",
+                    entry => Helpers.YamlSerialize(SpawnPoint.Read(entry.Stream.SetPosition(0))),
+                    ".areadataspawn file");
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+            }
+        });
+
+        private void MenuFileMassExportAreaDataScripts() => FileDialog.OnFolder(folderPath =>
+        {
+            try
+            {
+                MassExportBarEntries(
+                    folderPath,
+                    Bar.EntryType.AreaDataScript,
+                    ".areadatascript",
+                    entry => AreaDataScript.Decompile(AreaDataScript.Read(entry.Stream.SetPosition(0))),
+                    ".areadatascript file");
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+            }
+        });
+
+        private void MassExportBarEntries(
+            string destinationFolder,
+            Bar.EntryType entryType,
+            string fileExtension,
+            Func<Bar.Entry, string> serializeEntry,
+            string itemDescription,
+            string noItemDescription = null)
         {
             if (string.IsNullOrEmpty(destinationFolder))
             {
                 return;
             }
 
+            noItemDescription ??= itemDescription;
+
             const string DefaultRegionLabel = "(default)";
 
             var exportedMaps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var exportedRegions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var exportedArdFiles = 0;
-            var exportedSpawnGroups = 0;
+            var exportedEntries = 0;
 
             foreach (var mapArds in _mapArdsList)
             {
@@ -503,11 +553,11 @@ namespace OpenKh.Tools.Kh2MapStudio
 
                     try
                     {
-                        var spawnEntries = barEntries
-                            .Where(entry => entry.Type == Bar.EntryType.AreaDataSpawn && entry.Stream.Length > 0)
+                        var matchingEntries = barEntries
+                            .Where(entry => entry.Type == entryType && entry.Stream.Length > 0)
                             .ToList();
 
-                        if (spawnEntries.Count == 0)
+                        if (matchingEntries.Count == 0)
                         {
                             continue;
                         }
@@ -523,12 +573,12 @@ namespace OpenKh.Tools.Kh2MapStudio
                         var mapDirectory = Path.Combine(regionRoot, "ard", mapArds.MapName);
                         Directory.CreateDirectory(mapDirectory);
 
-                        foreach (var entry in spawnEntries)
+                        foreach (var entry in matchingEntries)
                         {
-                            var spawnPoints = SpawnPoint.Read(entry.Stream.SetPosition(0));
-                            var fileName = Path.Combine(mapDirectory, $"{entry.Name}.yml");
-                            File.WriteAllText(fileName, Helpers.YamlSerialize(spawnPoints));
-                            exportedSpawnGroups++;
+                            var fileName = Path.Combine(mapDirectory, $"{entry.Name}{fileExtension}");
+                            var fileContents = serializeEntry(entry);
+                            File.WriteAllText(fileName, fileContents);
+                            exportedEntries++;
                         }
                     }
                     finally
@@ -543,9 +593,9 @@ namespace OpenKh.Tools.Kh2MapStudio
 
             var title = "Mass Export";
 
-            if (exportedSpawnGroups == 0)
+            if (exportedEntries == 0)
             {
-                ShowInfo("No spawn points were exported.", title);
+                ShowInfo($"No {Pluralize(0, noItemDescription)} were exported.", title);
                 return;
             }
 
@@ -555,15 +605,15 @@ namespace OpenKh.Tools.Kh2MapStudio
 
             var lines = new List<string>
             {
-                $"Exported {exportedSpawnGroups} {Pluralize(exportedSpawnGroups, "spawn group")} " +
-                $"from {exportedArdFiles} {Pluralize(exportedArdFiles, "ARD file")} " +
-                $"across {exportedMaps.Count} {Pluralize(exportedMaps.Count, "map")} " +
-                $"in {regionList.Length} {Pluralize(regionList.Length, "region")}"
+                $"Exported {exportedEntries} {Pluralize(exportedEntries, itemDescription)} " +
+                $"from {exportedArdFiles} {Pluralize(exportedArdFiles, \"ARD file\")} " +
+                $"across {exportedMaps.Count} {Pluralize(exportedMaps.Count, \"map\")} " +
+                $"in {regionList.Length} {Pluralize(regionList.Length, \"region\")}"
             };
 
             if (regionList.Length > 0)
             {
-                lines.Add($"Regions: {string.Join(", ", regionList)}");
+                lines.Add($"Regions: {string.Join(\", \", regionList)}");
             }
 
             ShowInfo(string.Join("\n", lines) + '.', title);
