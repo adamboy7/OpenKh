@@ -330,6 +330,11 @@ namespace OpenKh.Tools.Kh2MapStudio.Windows
 
         private static void Run(SpawnPoint.Entity entity, int index)
         {
+            if (ImGui.Button($"Teleport to Entity##{index}"))
+            {
+                _ctrl.TeleportCameraTo(new Vector3(entity.PositionX, entity.PositionY, entity.PositionZ));
+            }
+
             var objs = _ctrl.CurrentSpawnPoint.ObjEntryCtrl;
             if (ImGui.BeginCombo($"Object##{index}", objs.GetName(entity.ObjectId)))
             {

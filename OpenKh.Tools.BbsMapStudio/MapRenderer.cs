@@ -102,6 +102,11 @@ namespace OpenKh.Tools.BbsMapStudio
             set => CurrentSpawnPoint = SpawnPoints.FirstOrDefault(x => x.Name == value);
         }
 
+        public void TeleportCameraTo(Vector3 position)
+        {
+            Camera.CameraPosition = position;
+        }
+
         public SpawnScriptModel SpawnScriptMap { get; private set; }
         public SpawnScriptModel SpawnScriptBattle { get; private set; }
         public SpawnScriptModel SpawnScriptEvent { get; private set; }

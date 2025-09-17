@@ -120,6 +120,16 @@ namespace OpenKh.Tools.Kh2MapStudio
             set => CurrentSpawnPoint = SpawnPoints.FirstOrDefault(x => x.Name == value);
         }
 
+        public void TeleportCameraTo(Vector3 position)
+        {
+            Camera.CameraPosition = position;
+
+            if (MapCollision?.Coct is Coct coct)
+            {
+                CurrentArea.AreaSettingsMask = LocateCurrentArea(coct, Camera.CameraPosition);
+            }
+        }
+
         public SpawnScriptModel SpawnScriptMap { get; private set; }
         public SpawnScriptModel SpawnScriptBattle { get; private set; }
         public SpawnScriptModel SpawnScriptEvent { get; private set; }
