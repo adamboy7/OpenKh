@@ -477,8 +477,6 @@ namespace OpenKh.Tools.Kh2MapStudio
                 return;
             }
 
-            var exportRoot = Path.Combine(destinationFolder, "ard");
-
             foreach (var mapArds in _mapArdsList)
             {
                 foreach (var ardRelative in mapArds.ArdFilesRelative)
@@ -488,6 +486,8 @@ namespace OpenKh.Tools.Kh2MapStudio
                     {
                         continue;
                     }
+
+                    var region = Path.GetDirectoryName(ardRelative) ?? string.Empty;
 
                     var barEntries = File.OpenRead(ardFilePath).Using(Bar.Read);
 
@@ -502,7 +502,10 @@ namespace OpenKh.Tools.Kh2MapStudio
                             continue;
                         }
 
-                        var mapDirectory = Path.Combine(exportRoot, mapArds.MapName);
+                        var regionRoot = string.IsNullOrEmpty(region)
+                            ? destinationFolder
+                            : Path.Combine(destinationFolder, region);
+                        var mapDirectory = Path.Combine(regionRoot, "ard", mapArds.MapName);
                         Directory.CreateDirectory(mapDirectory);
 
                         foreach (var entry in spawnEntries)
