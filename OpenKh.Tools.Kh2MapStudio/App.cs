@@ -1,7 +1,9 @@
 using Assimp;
 using ImGuiNET;
 using Microsoft.Xna.Framework.Input;
+using OpenKh.Common;
 using OpenKh.Kh2;
+using OpenKh.Kh2.Ard;
 using OpenKh.Tools.Common.CustomImGui;
 using OpenKh.Tools.Kh2MapStudio.Windows;
 using System;
@@ -365,6 +367,7 @@ namespace OpenKh.Tools.Kh2MapStudio
                     ForMenuItem("Save map+ard", "CTRL+S", MenuFileSave, IsOpen);
                     ForMenuItem("Save map as...", MenuFileSaveMapAs, IsOpen);
                     ForMenuItem("Save ard as...", MenuFileSaveArdAs, IsOpen);
+                    ForMenuItem("Mass Export", MenuFileMassExport, IsGameOpen);
                     ImGui.Separator();
                     ForMenu("Export", () =>
                     {
@@ -453,6 +456,71 @@ namespace OpenKh.Tools.Kh2MapStudio
         {
             var defaultName = MapName + ".ard";
             FileDialog.OnSave(_mapRenderer.SaveArd, ArdFilter, defaultName);
+        }
+
+        private void MenuFileMassExport() => FileDialog.OnFolder(folderPath =>
+        {
+            try
+            {
+                MassExportSpawnPoints(folderPath);
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+            }
+        });
+
+        private void MassExportSpawnPoints(string destinationFolder)
+        {
+            if (string.IsNullOrEmpty(destinationFolder))
+            {
+                return;
+            }
+
+            var exportRoot = Path.Combine(destinationFolder, "ard");
+
+            foreach (var mapArds in _mapArdsList)
+            {
+                foreach (var ardRelative in mapArds.ArdFilesRelative)
+                {
+                    var ardFilePath = Path.Combine(_ardPath, ardRelative);
+                    if (!File.Exists(ardFilePath))
+                    {
+                        continue;
+                    }
+
+                    var barEntries = File.OpenRead(ardFilePath).Using(Bar.Read);
+
+                    try
+                    {
+                        var spawnEntries = barEntries
+                            .Where(entry => entry.Type == Bar.EntryType.AreaDataSpawn && entry.Stream.Length > 0)
+                            .ToList();
+
+                        if (spawnEntries.Count == 0)
+                        {
+                            continue;
+                        }
+
+                        var mapDirectory = Path.Combine(exportRoot, mapArds.MapName);
+                        Directory.CreateDirectory(mapDirectory);
+
+                        foreach (var entry in spawnEntries)
+                        {
+                            var spawnPoints = SpawnPoint.Read(entry.Stream.SetPosition(0));
+                            var fileName = Path.Combine(mapDirectory, $"{entry.Name}.yml");
+                            File.WriteAllText(fileName, Helpers.YamlSerialize(spawnPoints));
+                        }
+                    }
+                    finally
+                    {
+                        foreach (var entry in barEntries)
+                        {
+                            entry.Stream?.Dispose();
+                        }
+                    }
+                }
+            }
         }
 
         private void ExportMapCollision() => FileDialog.OnSave(fileName =>
