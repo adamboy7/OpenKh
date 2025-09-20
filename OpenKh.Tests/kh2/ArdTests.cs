@@ -180,6 +180,41 @@ StatusFlag5";
             }
 
             [Fact]
+            public void CompileRoundTripIfBlock()
+            {
+                const string Script = "Program 0x01\nIf Entrance 3\n\tSpawn \"TEST\"\n\tMapVisibility 1 2";
+
+                var scripts = AreaDataScript.Compile(Script).ToArray();
+                var script = Assert.Single(scripts);
+                Assert.Equal(0x01, script.ProgramId);
+
+                var ifCommand = Assert.IsType<AreaDataScript.If>(Assert.Single(script.Functions));
+                Assert.Equal(3, ifCommand.Value);
+                var compiledSpawn = Assert.IsType<AreaDataScript.Spawn>(ifCommand.Commands[0]);
+                Assert.Equal("TEST", compiledSpawn.SpawnSet);
+                var compiledVisibility = Assert.IsType<AreaDataScript.MapVisibility>(ifCommand.Commands[1]);
+                Assert.Equal(1, compiledVisibility.Flags1);
+                Assert.Equal(2, compiledVisibility.Flags2);
+
+                using var stream = new MemoryStream();
+                AreaDataScript.Write(stream, scripts);
+                stream.Position = 0;
+
+                var roundTripScripts = AreaDataScript.Read(stream);
+                var roundTripIf = Assert.IsType<AreaDataScript.If>(Assert.Single(Assert.Single(roundTripScripts).Functions));
+                Assert.Equal(3, roundTripIf.Value);
+                var roundTripSpawn = Assert.IsType<AreaDataScript.Spawn>(roundTripIf.Commands[0]);
+                Assert.Equal("TEST", roundTripSpawn.SpawnSet);
+                var roundTripVisibility = Assert.IsType<AreaDataScript.MapVisibility>(roundTripIf.Commands[1]);
+                Assert.Equal(1, roundTripVisibility.Flags1);
+                Assert.Equal(2, roundTripVisibility.Flags2);
+
+                var expected = AreaDataScript.Decompile(scripts);
+                var actual = AreaDataScript.Decompile(roundTripScripts);
+                Assert.Equal(expected, actual);
+            }
+
+            [Fact]
             public void WriteAreaSettings() =>
                 Helpers.AssertStream(new MemoryStream(SampleScript), stream =>
                 {

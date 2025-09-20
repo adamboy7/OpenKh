@@ -98,6 +98,7 @@ namespace OpenKh.Kh2.Ard
             Code,
         }
 
+        private const char CommentChar = '#';
         private const short Terminator = -1;
         private static readonly IBinaryMapping Mapping =
             MappingConfiguration.DefaultConfiguration()
@@ -541,7 +542,15 @@ namespace OpenKh.Kh2.Ard
 
             public void Parse(int nRow, List<string> tokens)
             {
-                throw new Exception($"Parsing an '{nameof(If)}' is not yet supported");
+                if (tokens.Count < 3)
+                    throw new SpawnScriptParserException(nRow, $"Expected '{nameof(If)} Entrance <value>' but got '{string.Join(" ", tokens)}'.");
+
+                var keyword = GetToken(nRow, tokens, 1);
+                if (keyword != "Entrance")
+                    throw new SpawnScriptParserException(nRow, $"Expected 'Entrance' but got '{keyword}'.");
+
+                Value = ParseAsInt(nRow, GetToken(nRow, tokens, 2));
+                Commands = new List<IAreaDataCommand>();
             }
 
             public override string ToString() =>
@@ -816,7 +825,6 @@ namespace OpenKh.Kh2.Ard
         
         public static IEnumerable<AreaDataScript> Compile(string text)
         {
-            const char Comment = '#';
             AreaDataScript newScript() => new AreaDataScript
             {
                 Functions = new List<IAreaDataCommand>()
@@ -834,8 +842,9 @@ namespace OpenKh.Kh2.Ard
             while (row < lines.Length)
             {
                 var line = lines[row++];
-                var cleanLine = line.Split(Comment);
-                var tokens = Tokenize(row, cleanLine[0]).ToList();
+                var lineNumber = row;
+                var cleanLine = line.Split(CommentChar);
+                var tokens = Tokenize(lineNumber, cleanLine[0]).ToList();
                 if (tokens.Count == 0)
                     continue;
 
@@ -845,7 +854,7 @@ namespace OpenKh.Kh2.Ard
                 switch (tokens[0])
                 {
                     case "Program":
-                        var programId = ParseAsShort(row, GetToken(row, tokens, 1));
+                        var programId = ParseAsShort(lineNumber, GetToken(lineNumber, tokens, 1));
                         if (state == LexState.Code)
                         {
                             yield return script;
@@ -860,13 +869,13 @@ namespace OpenKh.Kh2.Ard
                         {
                             Settings = new List<IAreaDataSetting>()
                         };
-                        function.Parse(row, tokens);
+                        function.Parse(lineNumber, tokens);
                         script.Functions.Add(function);
 
                         while (row < lines.Length && (lines[row].Length == 0 || char.IsWhiteSpace(lines[row][0])))
                         {
                             line = lines[row++];
-                            cleanLine = line.Split(Comment);
+                            cleanLine = line.Split(CommentChar);
                             tokens = Tokenize(row, cleanLine[0]).ToList();
                             if (tokens.Count == 0)
                                 continue;
@@ -875,12 +884,49 @@ namespace OpenKh.Kh2.Ard
                         }
                         break;
                     default:
-                        script.Functions.Add(ParseCommand(row, tokens));
+                        if (tokens[0] == nameof(If))
+                            script.Functions.Add(ParseIfBlock(lineNumber, tokens));
+                        else
+                            script.Functions.Add(ParseCommand(lineNumber, tokens));
                         break;
                 }
             }
 
             yield return script;
+
+            If ParseIfBlock(int headerRow, List<string> headerTokens)
+            {
+                var ifCommand = new If();
+                ifCommand.Parse(headerRow, headerTokens);
+                ifCommand.Commands ??= new List<IAreaDataCommand>();
+
+                while (row < lines.Length)
+                {
+                    var nestedLine = lines[row];
+                    if (string.IsNullOrWhiteSpace(nestedLine))
+                    {
+                        row++;
+                        continue;
+                    }
+
+                    if (!char.IsWhiteSpace(nestedLine[0]))
+                        break;
+
+                    row++;
+                    var nestedRow = row;
+                    var nestedCleanLine = nestedLine.Substring(1).Split(CommentChar);
+                    var nestedTokens = Tokenize(nestedRow, nestedCleanLine[0]).ToList();
+                    if (nestedTokens.Count == 0)
+                        continue;
+
+                    if (nestedTokens[0] == nameof(If))
+                        ifCommand.Commands.Add(ParseIfBlock(nestedRow, nestedTokens));
+                    else
+                        ifCommand.Commands.Add(ParseCommand(nestedRow, nestedTokens));
+                }
+
+                return ifCommand;
+            }
         }
 
         private static IEnumerable<AreaDataScript> ReadAll(Stream stream)
