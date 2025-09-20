@@ -8,6 +8,7 @@ using OpenKh.Tools.Common.CustomImGui;
 using OpenKh.Tools.Kh2MapStudio.Windows;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -555,9 +556,10 @@ namespace OpenKh.Tools.Kh2MapStudio
                             foreach (var script in scripts)
                             {
                                 var programText = AreaDataScript.Decompile(new[] { script });
+                                var programIdDecimal = ((ushort)script.ProgramId).ToString(CultureInfo.InvariantCulture);
                                 var programFileName = Path.Combine(
                                     mapDirectory,
-                                    $"{programType}_program-{script.ProgramId:X2}.areadataprogram");
+                                    $"{programType}_{programIdDecimal}.areadataprogram");
                                 File.WriteAllText(programFileName, programText);
                                 exportedPrograms++;
                             }
