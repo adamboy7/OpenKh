@@ -553,8 +553,16 @@ namespace OpenKh.Kh2.Ard
                 Commands = new List<IAreaDataCommand>();
             }
 
-            public override string ToString() =>
-                $"{nameof(If)} Entrance {Value}{string.Join("\n\t", Commands)}\n";
+            public override string ToString()
+            {
+                if (Commands == null || Commands.Count == 0)
+                    return $"{nameof(If)} Entrance {Value}";
+
+                var nested = Commands
+                    .Select(command => command.ToString().Replace("\n", "\n\t"));
+
+                return $"{nameof(If)} Entrance {Value}\n\t{string.Join("\n\t", nested)}";
+            }
         }
 
         public class Unk1d : IAreaDataCommand
