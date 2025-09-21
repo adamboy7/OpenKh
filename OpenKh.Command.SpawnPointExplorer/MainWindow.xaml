@@ -1,0 +1,94 @@
+<Window x:Class="OpenKh.Command.SpawnPointExplorer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:OpenKh.Command.SpawnPointExplorer"
+        xmlns:h="http://helix-toolkit.org/wpf"
+        mc:Ignorable="d"
+        Title="Spawn Point Explorer" Height="720" Width="1200" MinWidth="900" MinHeight="600">
+    <Window.Resources>
+        <HierarchicalDataTemplate DataType="{x:Type local:MapNodeViewModel}" ItemsSource="{Binding SpawnGroups}">
+            <TextBlock Text="{Binding DisplayName}" />
+        </HierarchicalDataTemplate>
+        <HierarchicalDataTemplate DataType="{x:Type local:SpawnGroupNodeViewModel}" ItemsSource="{Binding SpawnPoints}">
+            <TextBlock Text="{Binding DisplayName}" />
+        </HierarchicalDataTemplate>
+        <DataTemplate DataType="{x:Type local:SpawnPointNodeViewModel}">
+            <TextBlock Text="{Binding DisplayName}" />
+        </DataTemplate>
+        <Style TargetType="TreeViewItem">
+            <Setter Property="ContextMenu">
+                <Setter.Value>
+                    <ContextMenu>
+                        <MenuItem Header="Export YAML..." Click="OnExportYamlClick" />
+                    </ContextMenu>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="10">
+            <TextBlock Text="Data Root:" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <TextBox Width="420" Text="{Binding DataRoot, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
+            <Button Content="Browse..." Click="OnBrowseClick" Margin="0,0,8,0" />
+            <Button Content="Load" Click="OnLoadClick" />
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="3*" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Margin="0,0,10,0" BorderBrush="#FF444444" BorderThickness="1" Padding="4">
+                <TreeView x:Name="OccurrencesTree" ItemsSource="{Binding OccurrenceMaps}" SelectedItemChanged="OnTreeSelectedItemChanged" />
+            </Border>
+
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="Enemy:" VerticalAlignment="Center" Margin="0,0,8,0" />
+                    <ComboBox Width="320"
+                              ItemsSource="{Binding Candidates}"
+                              SelectedItem="{Binding SelectedCandidate}"
+                              DisplayMemberPath="DisplayName"
+                              IsEditable="True"
+                              IsTextSearchEnabled="True" />
+                    <TextBlock Text="{Binding SelectedCandidateDetails}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <Border Grid.Row="1" BorderBrush="#FF444444" BorderThickness="1">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <h:HelixViewport3D Grid.Row="0" x:Name="Viewport" ShowFrameRate="False">
+                            <h:DefaultLights />
+                            <ModelVisual3D Content="{Binding PreviewModel}" />
+                        </h:HelixViewport3D>
+                        <TextBlock Grid.Row="1" Text="{Binding PreviewStatus}" Margin="6" TextWrapping="Wrap" />
+                    </Grid>
+                </Border>
+
+                <TextBlock Grid.Row="2" Text="{Binding OccurrenceSummary}" Margin="0,8,0,0" />
+            </Grid>
+        </Grid>
+
+        <StatusBar Grid.Row="2">
+            <StatusBarItem Content="{Binding StatusMessage}" />
+        </StatusBar>
+    </Grid>
+</Window>
