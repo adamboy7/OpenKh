@@ -10,12 +10,14 @@ Typical usage::
 
     python kh2_spawn_export_to_mod.py /path/to/export/root \
         --title "My Spawn Tweaks" --original-author "Modder" \
-        --description "Spawn and script adjustments"
+        --description "Spawn and script adjustments" \
+        --us --fr
 
 The script expects the export directory to contain the folder structure produced
 by Map Studio, for example ``ard/<map>/<spawn>.yml`` for spawn groups and
 ``ard/<map>/<entry>_<id>.areadataprogram`` for AreaData scripts. Regional
-variants (such as ``jp/ard/...``) are detected automatically.
+variants (such as ``jp/ard/...``) are detected automatically and can be filtered
+with the ``--region`` or shorthand ``--<name>`` switches.
 """
 
 from __future__ import annotations
@@ -62,11 +64,19 @@ class AssetBucket:
 class ModBuilder:
     """Helper class that aggregates exports and renders the mod.yml."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(
+        self,
+        root: Path,
+        *,
+        include_all_regions: bool = True,
+        region_filters: Iterable[Tuple[str, ...]] | None = None,
+    ) -> None:
         self.root = root
         self.assets: Dict[Tuple[Tuple[str, ...], str], AssetBucket] = {}
         self.spawnpoint_count = 0
         self.script_count = 0
+        self.include_all_regions = include_all_regions
+        self.region_filters = tuple(region_filters or ())
 
     def build(self) -> None:
         self._collect_spawnpoints()
@@ -93,6 +103,9 @@ class ModBuilder:
             if not map_name or not entry_name:
                 continue
 
+            if not self._should_include_region(region_parts):
+                continue
+
             bucket = self._get_bucket(region_parts, map_name)
             bucket.spawnpoints.setdefault(entry_name, set()).add(path.relative_to(self.root).as_posix())
             self.spawnpoint_count += 1
@@ -116,6 +129,9 @@ class ModBuilder:
             if not program_type:
                 continue
 
+            if not self._should_include_region(region_parts):
+                continue
+
             bucket = self._get_bucket(region_parts, map_name)
             bucket.scripts.setdefault(program_type, []).append(
                 ScriptEntry(program_id=program_id, path=path.relative_to(self.root).as_posix())
@@ -127,6 +143,16 @@ class ModBuilder:
         if key not in self.assets:
             self.assets[key] = AssetBucket(region_parts, map_name, defaultdict(set), defaultdict(list))
         return self.assets[key]
+
+    def _should_include_region(self, region_parts: Tuple[str, ...]) -> bool:
+        if self.include_all_regions:
+            return True
+
+        normalized = tuple(part.lower() for part in region_parts)
+        for candidate in self.region_filters:
+            if len(candidate) <= len(normalized) and normalized[: len(candidate)] == candidate:
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Rendering
@@ -269,7 +295,56 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument("--description", default="Auto-generated mod.yml for exported spawn points and AreaData scripts.", help="Description written into mod.yml.")
     parser.add_argument("--original-author", "--author", default="Unknown", help="Original author field for the mod.yml.")
     parser.add_argument("--game", default="kh2", help="Optional game identifier to include.")
-    return parser.parse_args(argv)
+    parser.add_argument(
+        "--region",
+        dest="regions",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help=(
+            "Limit processing to specific region folders. Can be used multiple times (e.g. --region us). "
+            "Use --all to include every region (default)."
+        ),
+    )
+    parser.add_argument(
+        "--all",
+        dest="all_regions",
+        action="store_true",
+        help="Include all region folders (this is the default when no regions are provided).",
+    )
+
+    args, unknown = parser.parse_known_args(argv)
+
+    for item in unknown:
+        if item.startswith("--") and len(item) > 2:
+            args.regions.append(item[2:])
+        else:
+            parser.error(f"unrecognized arguments: {' '.join(unknown)}")
+
+    normalized_filters = _normalize_region_filters(args.regions)
+
+    if args.all_regions and normalized_filters:
+        parser.error("--all cannot be combined with specific region selections.")
+
+    include_all = args.all_regions or not normalized_filters
+
+    args.region_filters = normalized_filters
+    args.include_all_regions = include_all
+    del args.regions
+    del args.all_regions
+    return args
+
+
+def _normalize_region_filters(region_names: Iterable[str]) -> List[Tuple[str, ...]]:
+    normalized: List[Tuple[str, ...]] = []
+    seen = set()
+    for name in region_names:
+        cleaned = name.replace("\\", "/").strip()
+        parts = tuple(part.lower() for part in cleaned.split("/") if part)
+        if parts not in seen:
+            normalized.append(parts)
+            seen.add(parts)
+    return normalized
 
 
 def main(argv: List[str]) -> int:
@@ -281,7 +356,11 @@ def main(argv: List[str]) -> int:
 
     output_path = args.output or (root / "mod.yml")
 
-    builder = ModBuilder(root)
+    builder = ModBuilder(
+        root,
+        include_all_regions=args.include_all_regions,
+        region_filters=args.region_filters,
+    )
     builder.build()
 
     metadata = OrderedDict()
