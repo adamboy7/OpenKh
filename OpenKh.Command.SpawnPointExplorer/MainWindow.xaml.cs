@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Controls;
 using Forms = System.Windows.Forms;
 
 namespace OpenKh.Command.SpawnPointExplorer;
@@ -43,11 +42,4 @@ public partial class MainWindow : Window
         _viewModel.SelectedTreeItem = e.NewValue;
     }
 
-    private async void OnExportYamlClick(object sender, RoutedEventArgs e)
-    {
-        if (sender is MenuItem menuItem)
-        {
-            await _viewModel.ExportSelectionAsync(menuItem.DataContext);
-        }
-    }
 }

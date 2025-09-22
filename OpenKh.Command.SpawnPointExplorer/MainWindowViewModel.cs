@@ -10,6 +10,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Input;
 using System.Windows.Media.Media3D;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -33,10 +34,17 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     private Model3DGroup? _previewModel;
     private bool _isBusy;
 
+    public MainWindowViewModel()
+    {
+        ExportSelectionCommand = new AsyncRelayCommand(ExportSelectionAsync);
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<EnemyCandidateViewModel> Candidates => _candidates;
     public ObservableCollection<MapNodeViewModel> OccurrenceMaps => _occurrenceMaps;
+
+    public ICommand ExportSelectionCommand { get; }
 
     public string? DataRoot
     {
@@ -375,6 +383,53 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
+    }
+
+    private sealed class AsyncRelayCommand : ICommand
+    {
+        private readonly Func<object?, Task> _execute;
+        private readonly Predicate<object?>? _canExecute;
+        private bool _isExecuting;
+
+        public AsyncRelayCommand(Func<object?, Task> execute, Predicate<object?>? canExecute = null)
+        {
+            _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+            _canExecute = canExecute;
+        }
+
+        public event EventHandler? CanExecuteChanged;
+
+        public bool CanExecute(object? parameter)
+        {
+            if (_isExecuting)
+            {
+                return false;
+            }
+
+            return _canExecute?.Invoke(parameter) ?? true;
+        }
+
+        public async void Execute(object? parameter)
+        {
+            if (!CanExecute(parameter))
+            {
+                return;
+            }
+
+            try
+            {
+                _isExecuting = true;
+                RaiseCanExecuteChanged();
+                await _execute(parameter);
+            }
+            finally
+            {
+                _isExecuting = false;
+                RaiseCanExecuteChanged();
+            }
+        }
+
+        private void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private sealed record LoadResult(

@@ -21,7 +21,9 @@
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu>
-                        <MenuItem Header="Export YAML..." Click="OnExportYamlClick" />
+                        <MenuItem Header="Export YAML..."
+                                  Command="{Binding PlacementTarget.Tag, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                  CommandParameter="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                     </ContextMenu>
                 </Setter.Value>
             </Setter>
@@ -48,7 +50,10 @@
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Margin="0,0,10,0" BorderBrush="#FF444444" BorderThickness="1" Padding="4">
-                <TreeView x:Name="OccurrencesTree" ItemsSource="{Binding OccurrenceMaps}" SelectedItemChanged="OnTreeSelectedItemChanged" />
+                <TreeView x:Name="OccurrencesTree"
+                          ItemsSource="{Binding OccurrenceMaps}"
+                          SelectedItemChanged="OnTreeSelectedItemChanged"
+                          Tag="{Binding ExportSelectionCommand}" />
             </Border>
 
             <Grid Grid.Column="1">
