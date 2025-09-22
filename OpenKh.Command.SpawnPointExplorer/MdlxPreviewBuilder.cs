@@ -124,6 +124,8 @@ internal static class MdlxPreviewBuilder
 
     private static Material CreateMaterial(ModelSkeletal.SkeletalGroup group, ModelTexture? texture)
     {
+        Brush? brush = null;
+
         if (texture != null)
         {
             try
@@ -132,14 +134,10 @@ internal static class MdlxPreviewBuilder
                 if (textureIndex >= 0 && textureIndex < texture.Images.Count)
                 {
                     var image = texture.Images[textureIndex].GetBimapSource();
-                    var brush = new ImageBrush(image)
+                    brush = new ImageBrush(image)
                     {
                         Stretch = Stretch.Uniform
                     };
-                    brush.Freeze();
-                    var material = new DiffuseMaterial(brush);
-                    material.Freeze();
-                    return material;
                 }
             }
             catch
@@ -148,11 +146,20 @@ internal static class MdlxPreviewBuilder
             }
         }
 
-        var solid = new SolidColorBrush(Color.FromRgb(200, 200, 200));
-        solid.Freeze();
-        var fallback = new DiffuseMaterial(solid);
-        fallback.Freeze();
-        return fallback;
+        brush ??= new SolidColorBrush(Color.FromRgb(200, 200, 200));
+        brush.Freeze();
+
+        var diffuse = new DiffuseMaterial(brush);
+        diffuse.Freeze();
+
+        var emissive = new EmissiveMaterial(brush);
+        emissive.Freeze();
+
+        var materialGroup = new MaterialGroup();
+        materialGroup.Children.Add(diffuse);
+        materialGroup.Children.Add(emissive);
+        materialGroup.Freeze();
+        return materialGroup;
     }
 }
 
