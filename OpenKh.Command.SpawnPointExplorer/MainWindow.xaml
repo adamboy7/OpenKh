@@ -8,6 +8,7 @@
         mc:Ignorable="d"
         Title="Spawn Point Explorer" Height="720" Width="1200" MinWidth="900" MinHeight="600">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <HierarchicalDataTemplate DataType="{x:Type local:MapNodeViewModel}" ItemsSource="{Binding SpawnGroups}">
             <TextBlock Text="{Binding DisplayName}" />
         </HierarchicalDataTemplate>
@@ -95,5 +96,16 @@
         <StatusBar Grid.Row="2">
             <StatusBarItem Content="{Binding StatusMessage}" />
         </StatusBar>
+
+        <Border Grid.RowSpan="3"
+                Background="#99000000"
+                Visibility="{Binding IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}"
+                Panel.ZIndex="1"
+                IsHitTestVisible="True">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="20">
+                <TextBlock Text="{Binding StatusMessage}" Foreground="White" FontSize="16" HorizontalAlignment="Center" />
+                <ProgressBar Width="240" IsIndeterminate="True" Margin="0,12,0,0" />
+            </StackPanel>
+        </Border>
     </Grid>
 </Window>
