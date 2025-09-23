@@ -9,6 +9,9 @@
         Title="Spawn Point Explorer" Height="720" Width="1200" MinWidth="900" MinHeight="600">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <HierarchicalDataTemplate DataType="{x:Type local:RegionNodeViewModel}" ItemsSource="{Binding Maps}">
+            <TextBlock Text="{Binding DisplayName}" />
+        </HierarchicalDataTemplate>
         <HierarchicalDataTemplate DataType="{x:Type local:MapNodeViewModel}" ItemsSource="{Binding SpawnGroups}">
             <TextBlock Text="{Binding DisplayName}" />
         </HierarchicalDataTemplate>
@@ -52,7 +55,7 @@
 
             <Border Grid.Column="0" Margin="0,0,10,0" BorderBrush="#FF444444" BorderThickness="1" Padding="4">
                 <TreeView x:Name="OccurrencesTree"
-                          ItemsSource="{Binding OccurrenceMaps}"
+                          ItemsSource="{Binding OccurrenceRegions}"
                           SelectedItemChanged="OnTreeSelectedItemChanged"
                           Tag="{Binding ExportSelectionCommand}" />
             </Border>

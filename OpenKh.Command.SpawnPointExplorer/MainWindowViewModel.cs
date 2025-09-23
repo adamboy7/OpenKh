@@ -19,8 +19,30 @@ namespace OpenKh.Command.SpawnPointExplorer;
 
 internal sealed class MainWindowViewModel : INotifyPropertyChanged
 {
+    internal const string DefaultRegionLabel = "(default)";
+
+    private static readonly HashSet<string> KnownRegionCodes = new(new[]
+    {
+        "us",
+        "uk",
+        "en",
+        "fr",
+        "sp",
+        "it",
+        "ge",
+        "de",
+        "la",
+        "jp",
+        "cn",
+        "kr",
+        "tw",
+        "hk",
+        "th",
+        "eu"
+    }, StringComparer.OrdinalIgnoreCase);
+
     private readonly ObservableCollection<EnemyCandidateViewModel> _candidates = new();
-    private readonly ObservableCollection<MapNodeViewModel> _occurrenceMaps = new();
+    private readonly ObservableCollection<RegionNodeViewModel> _occurrenceRegions = new();
 
     private SpawnDataSet? _spawnData;
     private IReadOnlyDictionary<string, string> _modelIndex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -42,7 +64,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<EnemyCandidateViewModel> Candidates => _candidates;
-    public ObservableCollection<MapNodeViewModel> OccurrenceMaps => _occurrenceMaps;
+    public ObservableCollection<RegionNodeViewModel> OccurrenceRegions => _occurrenceRegions;
 
     public ICommand ExportSelectionCommand { get; }
 
@@ -123,7 +145,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         StatusMessage = "Scanning spawnpoints...";
         SelectedCandidate = null;
         Candidates.Clear();
-        OccurrenceMaps.Clear();
+        OccurrenceRegions.Clear();
         PreviewModel = null;
         PreviewStatus = string.Empty;
         OccurrenceSummary = string.Empty;
@@ -214,7 +236,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_spawnData == null || candidate == null)
         {
-            OccurrenceMaps.Clear();
+            OccurrenceRegions.Clear();
             PreviewModel = null;
             PreviewStatus = string.Empty;
             OccurrenceSummary = string.Empty;
@@ -230,10 +252,10 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
-        OccurrenceMaps.Clear();
-        foreach (var map in occurrences)
+        OccurrenceRegions.Clear();
+        foreach (var group in GroupOccurrencesByRegion(occurrences))
         {
-            OccurrenceMaps.Add(new MapNodeViewModel(map));
+            OccurrenceRegions.Add(group);
         }
 
         OccurrenceSummary = occurrences.Count == 0
@@ -271,7 +293,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
     }
 
-    private static void WriteYaml(string filePath, SpawnExportModel model)
+    private static void WriteYaml(string filePath, object model)
     {
         var serializer = new SerializerBuilder()
             .WithNamingConvention(CamelCaseNamingConvention.Instance)
@@ -352,6 +374,9 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         switch (selection)
         {
+            case RegionNodeViewModel regionNode:
+                var regionModel = SpawnRegionExportModel.FromRegion(regionNode.Name, regionNode.Maps.Select(map => map.Source));
+                return new ExportResult(regionModel, SanitizeFileName(regionNode.Name) + ".yml");
             case MapNodeViewModel mapNode:
                 var mapModel = SpawnExportModel.FromMap(mapNode.Source);
                 return new ExportResult(mapModel, mapNode.Source.MapName + ".yml");
@@ -371,6 +396,45 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         var invalid = Path.GetInvalidFileNameChars();
         var safe = new string(name.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
         return string.IsNullOrWhiteSpace(safe) ? "spawn" : safe;
+    }
+
+    private static IEnumerable<RegionNodeViewModel> GroupOccurrencesByRegion(IEnumerable<MapEnemyOccurrences> occurrences)
+    {
+        return occurrences
+            .GroupBy(map => DetermineRegion(map), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new RegionNodeViewModel(group.Key, group
+                .OrderBy(map => map.MapName, StringComparer.OrdinalIgnoreCase)));
+    }
+
+    private static string DetermineRegion(MapEnemyOccurrences map)
+    {
+        if (string.IsNullOrWhiteSpace(map.RelativePath))
+        {
+            return DefaultRegionLabel;
+        }
+
+        var directory = Path.GetDirectoryName(map.RelativePath)?.Replace('\\', '/') ?? string.Empty;
+        if (!string.IsNullOrEmpty(directory))
+        {
+            var segments = directory
+                .Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var segment in segments)
+            {
+                if (KnownRegionCodes.Contains(segment))
+                {
+                    return segment;
+                }
+            }
+
+            if (segments.Length > 0)
+            {
+                return segments[^1];
+            }
+        }
+
+        return DefaultRegionLabel;
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -438,7 +502,22 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         IReadOnlyDictionary<string, string> ModelIndex,
         List<SpawnScanIssue> Issues);
 
-    private sealed record ExportResult(SpawnExportModel Model, string SuggestedFileName);
+    private sealed record ExportResult(object Model, string SuggestedFileName);
+}
+
+internal sealed class RegionNodeViewModel
+{
+    public RegionNodeViewModel(string name, IEnumerable<MapEnemyOccurrences> maps)
+    {
+        Name = string.IsNullOrWhiteSpace(name) ? MainWindowViewModel.DefaultRegionLabel : name;
+        Maps = new ObservableCollection<MapNodeViewModel>(maps.Select(map => new MapNodeViewModel(this, map)));
+    }
+
+    public string Name { get; }
+
+    public ObservableCollection<MapNodeViewModel> Maps { get; }
+
+    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1} map{2})", Name, Maps.Count, Maps.Count == 1 ? string.Empty : "s");
 }
 
 internal sealed record EnemyCandidateViewModel(
@@ -484,11 +563,14 @@ internal sealed record EnemyCandidateViewModel(
 
 internal sealed class MapNodeViewModel
 {
-    public MapNodeViewModel(MapEnemyOccurrences source)
+    public MapNodeViewModel(RegionNodeViewModel parent, MapEnemyOccurrences source)
     {
+        Parent = parent;
         Source = source;
         SpawnGroups = new ObservableCollection<SpawnGroupNodeViewModel>(source.SpawnGroups.Select(group => new SpawnGroupNodeViewModel(this, group)));
     }
+
+    public RegionNodeViewModel Parent { get; }
 
     public MapEnemyOccurrences Source { get; }
 
@@ -578,6 +660,12 @@ internal sealed record SpawnExportModel(string Map, string RelativePath, IReadOn
                 entity.PositionY,
                 entity.PositionZ)).ToList());
     }
+}
+
+internal sealed record SpawnRegionExportModel(string Region, IReadOnlyList<SpawnExportModel> Maps)
+{
+    public static SpawnRegionExportModel FromRegion(string region, IEnumerable<MapEnemyOccurrences> maps) =>
+        new(region, maps.Select(SpawnExportModel.FromMap).ToList());
 }
 
 internal sealed record SpawnExportGroup(string Name, IReadOnlyList<SpawnExportPoint> Points);
