@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
 using Forms = System.Windows.Forms;
 
 namespace OpenKh.Command.SpawnPointExplorer;
@@ -40,6 +42,15 @@ public partial class MainWindow : Window
     private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         _viewModel.SelectedTreeItem = e.NewValue;
+    }
+
+    private void OnTreeViewItemPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is TreeViewItem item)
+        {
+            item.Focus();
+            item.IsSelected = true;
+        }
     }
 
 }

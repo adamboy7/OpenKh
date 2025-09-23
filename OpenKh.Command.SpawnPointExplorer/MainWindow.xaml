@@ -22,6 +22,8 @@
             <TextBlock Text="{Binding DisplayName}" />
         </DataTemplate>
         <Style TargetType="TreeViewItem">
+            <Setter Property="Tag" Value="{Binding DataContext.ExportSelectionCommand, RelativeSource={RelativeSource AncestorType=Window}}" />
+            <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnTreeViewItemPreviewMouseRightButtonDown" />
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu>
