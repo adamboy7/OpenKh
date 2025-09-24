@@ -8,6 +8,9 @@
         Title="Spawn Point Explorer" Height="720" Width="1200" MinWidth="900" MinHeight="600">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <HierarchicalDataTemplate DataType="{x:Type local:GameNodeViewModel}" ItemsSource="{Binding Regions}">
+            <TextBlock Text="{Binding DisplayName}" />
+        </HierarchicalDataTemplate>
         <HierarchicalDataTemplate DataType="{x:Type local:RegionNodeViewModel}" ItemsSource="{Binding Maps}">
             <TextBlock Text="{Binding DisplayName}" />
         </HierarchicalDataTemplate>
