@@ -1,3 +1,4 @@
+using OpenKh.Common;
 using OpenKh.Kh2;
 using OpenKh.Kh2.Ard;
 using OpenKh.Command.SpawnPointExplorer.Views;
@@ -15,8 +16,6 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Media3D;
 using Forms = System.Windows.Forms;
-using YamlDotNet.Serialization;
-using YamlDotNet.Serialization.NamingConventions;
 
 namespace OpenKh.Command.SpawnPointExplorer;
 
@@ -170,7 +169,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (selection == null)
         {
-            StatusMessage = "Select a region, map, spawn group, or spawn point to export.";
+            StatusMessage = "Select a game, region, map, spawn group, or spawn point to export.";
             return;
         }
 
@@ -180,42 +179,26 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
-        if (selection is RegionNodeViewModel regionNode)
+        switch (selection)
         {
-            await ExportRegionAsync(regionNode);
-            return;
-        }
-
-        var export = BuildExport(selection);
-        if (export == null)
-        {
-            StatusMessage = "The selected item cannot be exported.";
-            return;
-        }
-
-        var dialog = new Microsoft.Win32.SaveFileDialog
-        {
-            Filter = "YAML files (*.yml)|*.yml|YAML files (*.yaml)|*.yaml|All files (*.*)|*.*",
-            DefaultExt = ".yml",
-            FileName = export.SuggestedFileName,
-            AddExtension = true,
-        };
-
-        var owner = System.Windows.Application.Current?.MainWindow;
-        var result = dialog.ShowDialog(owner);
-        if (result != true)
-        {
-            return;
-        }
-
-        try
-        {
-            await Task.Run(() => WriteYaml(dialog.FileName, export.Model));
-            StatusMessage = string.Format(CultureInfo.InvariantCulture, "Exported {0}.", dialog.FileName);
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = "Failed to export YAML: " + ex.Message;
+            case GameNodeViewModel gameNode:
+                await ExportGameAsync(gameNode);
+                return;
+            case RegionNodeViewModel regionNode:
+                await ExportRegionAsync(regionNode);
+                return;
+            case MapNodeViewModel mapNode:
+                await ExportMapAsync(mapNode);
+                return;
+            case SpawnGroupNodeViewModel groupNode:
+                await ExportSpawnGroupAsync(groupNode);
+                return;
+            case SpawnPointNodeViewModel pointNode:
+                await ExportSpawnPointAsync(pointNode);
+                return;
+            default:
+                StatusMessage = "The selected item cannot be exported.";
+                return;
         }
     }
 
@@ -297,23 +280,151 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
     }
 
-    private static void WriteYaml(string filePath, SpawnExportModel model)
+    private async Task ExportGameAsync(GameNodeViewModel gameNode)
     {
-        var serializer = new SerializerBuilder()
-            .WithNamingConvention(CamelCaseNamingConvention.Instance)
-            .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitDefaults)
-            .Build();
+        var exports = gameNode.Regions
+            .SelectMany(region => region.Maps.SelectMany(map => map.SpawnGroups.Select(group => new SpawnGroupExportItem(map, group))))
+            .ToList();
 
-        var yaml = serializer.Serialize(model);
-        File.WriteAllText(filePath, yaml);
+        await ExportSpawnGroupsAsync(
+            exports,
+            string.Format(CultureInfo.InvariantCulture, "Select the export root directory for game {0}", gameNode.Label),
+            exportRoot =>
+            {
+                var mapCount = exports
+                    .Select(item => item.Map.Source.MapName ?? string.Empty)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+                var regionCount = exports
+                    .Select(item => item.Map.Parent.FullLabel ?? string.Empty)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Exported {0} spawn group(s) across {1} map(s) in {2} region(s) for game {3} to {4}.",
+                    exports.Count,
+                    mapCount,
+                    regionCount,
+                    gameNode.Label,
+                    exportRoot);
+            });
     }
 
     private async Task ExportRegionAsync(RegionNodeViewModel regionNode)
     {
         var exports = regionNode.Maps
-            .SelectMany(map => map.SpawnGroups.Select(group => new RegionExportItem(map, group)))
+            .SelectMany(map => map.SpawnGroups.Select(group => new SpawnGroupExportItem(map, group)))
             .ToList();
 
+        await ExportSpawnGroupsAsync(
+            exports,
+            string.Format(CultureInfo.InvariantCulture, "Select the export root directory for region {0}", regionNode.FullLabel),
+            exportRoot =>
+            {
+                var mapCount = exports
+                    .Select(item => item.Map.Source.MapName ?? string.Empty)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+                return string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Exported {0} spawn group(s) across {1} map(s) for region {2} to {3}.",
+                    exports.Count,
+                    mapCount,
+                    regionNode.FullLabel,
+                    exportRoot);
+            });
+    }
+
+    private async Task ExportMapAsync(MapNodeViewModel mapNode)
+    {
+        var exports = mapNode.SpawnGroups
+            .Select(group => new SpawnGroupExportItem(mapNode, group))
+            .ToList();
+
+        await ExportSpawnGroupsAsync(
+            exports,
+            string.Format(CultureInfo.InvariantCulture, "Select the export directory for map {0}", mapNode.Source.MapName),
+            exportRoot => string.Format(
+                CultureInfo.InvariantCulture,
+                "Exported {0} spawn group(s) for map {1} to {2}.",
+                exports.Count,
+                mapNode.Source.MapName,
+                exportRoot));
+    }
+
+    private async Task ExportSpawnGroupAsync(SpawnGroupNodeViewModel groupNode)
+    {
+        var mapName = string.IsNullOrWhiteSpace(groupNode.Parent.Source.MapName)
+            ? "map"
+            : groupNode.Parent.Source.MapName;
+        var suggestedName = SanitizeFileName(mapName, "map") + "_" +
+            SanitizeFileName(groupNode.Source.SpawnName) + ".yml";
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "YAML files (*.yml)|*.yml|YAML files (*.yaml)|*.yaml|All files (*.*)|*.*",
+            DefaultExt = ".yml",
+            FileName = suggestedName,
+            AddExtension = true,
+        };
+
+        var owner = Application.Current?.MainWindow;
+        if (dialog.ShowDialog(owner) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.Run(() => WriteSpawnGroupYaml(dialog.FileName, groupNode.Source.AllSpawnPoints));
+            StatusMessage = string.Format(CultureInfo.InvariantCulture, "Exported {0}.", dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Failed to export YAML: " + ex.Message;
+        }
+    }
+
+    private async Task ExportSpawnPointAsync(SpawnPointNodeViewModel pointNode)
+    {
+        var mapName = string.IsNullOrWhiteSpace(pointNode.Parent.Parent.Source.MapName)
+            ? "map"
+            : pointNode.Parent.Parent.Source.MapName;
+        var spawnGroupName = SanitizeFileName(pointNode.Parent.Source.SpawnName);
+        var spawnId = pointNode.Source.Spawn.Id.ToString("X04", CultureInfo.InvariantCulture);
+        var suggestedName = SanitizeFileName(mapName, "map") + "_" + spawnGroupName + "_" + spawnId + ".yml";
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Filter = "YAML files (*.yml)|*.yml|YAML files (*.yaml)|*.yaml|All files (*.*)|*.*",
+            DefaultExt = ".yml",
+            FileName = suggestedName,
+            AddExtension = true,
+        };
+
+        var owner = Application.Current?.MainWindow;
+        if (dialog.ShowDialog(owner) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var spawnPoints = new List<SpawnPoint> { pointNode.Source.Spawn };
+            await Task.Run(() => WriteSpawnGroupYaml(dialog.FileName, spawnPoints));
+            StatusMessage = string.Format(CultureInfo.InvariantCulture, "Exported {0}.", dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Failed to export YAML: " + ex.Message;
+        }
+    }
+
+    private async Task ExportSpawnGroupsAsync(
+        IReadOnlyList<SpawnGroupExportItem> exports,
+        string description,
+        Func<string, string> successMessageFactory)
+    {
         if (exports.Count == 0)
         {
             StatusMessage = "No spawn groups to export.";
@@ -322,10 +433,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
         using var dialog = new Forms.FolderBrowserDialog
         {
-            Description = string.Format(
-                CultureInfo.InvariantCulture,
-                "Select the export root directory for region {0}",
-                regionNode.FullLabel)
+            Description = description
         };
 
         if (!string.IsNullOrEmpty(DataRoot) && Directory.Exists(DataRoot))
@@ -342,13 +450,8 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
         try
         {
-            await Task.Run(() => ExportRegionGroups(exportRoot, exports));
-            StatusMessage = string.Format(
-                CultureInfo.InvariantCulture,
-                "Exported {0} spawn group(s) for region {1} to {2}.",
-                exports.Count,
-                regionNode.FullLabel,
-                exportRoot);
+            await Task.Run(() => ExportSpawnGroups(exportRoot, exports));
+            StatusMessage = successMessageFactory(exportRoot);
         }
         catch (Exception ex)
         {
@@ -356,7 +459,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    private static void ExportRegionGroups(string exportRoot, IReadOnlyList<RegionExportItem> exports)
+    private static void ExportSpawnGroups(string exportRoot, IReadOnlyList<SpawnGroupExportItem> exports)
     {
         foreach (var export in exports)
         {
@@ -365,9 +468,14 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
             var fileName = SanitizeFileName(export.Group.Source.SpawnName) + ".yml";
             var filePath = Path.Combine(directory, fileName);
-            var model = SpawnExportModel.FromGroup(export.Map.Source, export.Group.Source);
-            WriteYaml(filePath, model);
+            WriteSpawnGroupYaml(filePath, export.Group.Source.AllSpawnPoints);
         }
+    }
+
+    private static void WriteSpawnGroupYaml(string filePath, IEnumerable<SpawnPoint> spawnPoints)
+    {
+        var yaml = Helpers.YamlSerialize(spawnPoints);
+        File.WriteAllText(filePath, yaml);
     }
 
     private static string GetMapExportDirectory(string exportRoot, RegionNodeViewModel region, MapEnemyOccurrences map)
@@ -556,32 +664,6 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             objentrySuffix);
     }
 
-    private static ExportResult? BuildExport(object selection)
-    {
-        switch (selection)
-        {
-            case MapNodeViewModel mapNode:
-                var mapModel = SpawnExportModel.FromMap(mapNode.Source);
-                return new ExportResult(mapModel, mapNode.Source.MapName + ".yml");
-            case SpawnGroupNodeViewModel groupNode:
-                var groupModel = SpawnExportModel.FromGroup(groupNode.Parent.Source, groupNode.Source);
-                return new ExportResult(
-                    groupModel,
-                    groupNode.Parent.Source.MapName + "_" + SanitizeFileName(groupNode.Source.SpawnName) + ".yml");
-            case SpawnPointNodeViewModel pointNode:
-                var pointModel = SpawnExportModel.FromPoint(
-                    pointNode.Parent.Parent.Source,
-                    pointNode.Parent.Source,
-                    pointNode.Source);
-                return new ExportResult(
-                    pointModel,
-                    pointNode.Parent.Parent.Source.MapName + "_" + SanitizeFileName(pointNode.Parent.Source.SpawnName) + "_" +
-                    pointNode.Source.Spawn.Id.ToString("X04", CultureInfo.InvariantCulture) + ".yml");
-            default:
-                return null;
-        }
-    }
-
     private static string SanitizeFileName(string name, string fallback = "spawn")
     {
         var invalid = Path.GetInvalidFileNameChars();
@@ -654,9 +736,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         IReadOnlyDictionary<string, string> ModelIndex,
         List<SpawnScanIssue> Issues);
 
-    private sealed record ExportResult(SpawnExportModel Model, string SuggestedFileName);
-
-    private sealed record RegionExportItem(MapNodeViewModel Map, SpawnGroupNodeViewModel Group);
+    private sealed record SpawnGroupExportItem(MapNodeViewModel Map, SpawnGroupNodeViewModel Group);
 }
 
 internal sealed record EnemyCandidateViewModel(
@@ -809,61 +889,3 @@ internal sealed class SpawnPointNodeViewModel
     }
 }
 
-internal sealed record SpawnExportModel(string Map, string RelativePath, IReadOnlyList<SpawnExportGroup> Groups)
-{
-    public static SpawnExportModel FromMap(MapEnemyOccurrences map) =>
-        new(map.MapName, map.RelativePath, map.SpawnGroups.Select(group => FromGroupInternal(group)).ToList());
-
-    public static SpawnExportModel FromGroup(MapEnemyOccurrences map, SpawnGroupOccurrences group) =>
-        new(map.MapName, map.RelativePath, new[] { FromGroupInternal(group) });
-
-    public static SpawnExportModel FromPoint(MapEnemyOccurrences map, SpawnGroupOccurrences group, SpawnPointOccurrences point) =>
-        new(map.MapName, map.RelativePath, new[] { new SpawnExportGroup(group.SpawnName, new[] { FromPointInternal(point) }) });
-
-    private static SpawnExportGroup FromGroupInternal(SpawnGroupOccurrences group) =>
-        new(group.SpawnName, group.SpawnPoints.Select(FromPointInternal).ToList());
-
-    private static SpawnExportPoint FromPointInternal(SpawnPointOccurrences point)
-    {
-        var spawn = point.Spawn;
-        return new SpawnExportPoint(
-            spawn.Id,
-            spawn.Type,
-            spawn.Flag,
-            spawn.Teleport.Place,
-            spawn.Teleport.Door,
-            spawn.Teleport.World,
-            point.Entities.Select(entity => new SpawnExportEntity(
-                entity.ObjectId,
-                entity.Serial,
-                entity.SpawnType,
-                entity.SpawnArgument,
-                entity.SpawnDelay,
-                entity.SpawnRange,
-                entity.PositionX,
-                entity.PositionY,
-                entity.PositionZ)).ToList());
-    }
-}
-
-internal sealed record SpawnExportGroup(string Name, IReadOnlyList<SpawnExportPoint> Points);
-
-internal sealed record SpawnExportPoint(
-    int SpawnId,
-    int SpawnType,
-    int SpawnFlag,
-    byte Place,
-    byte Door,
-    byte World,
-    IReadOnlyList<SpawnExportEntity> Entities);
-
-internal sealed record SpawnExportEntity(
-    int ObjectId,
-    short Serial,
-    byte SpawnType,
-    byte SpawnArgument,
-    short SpawnDelay,
-    short SpawnRange,
-    float PositionX,
-    float PositionY,
-    float PositionZ);

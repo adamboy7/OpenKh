@@ -109,7 +109,10 @@ internal sealed record SpawnDataSet(
 
                 if (spawnPoints.Count > 0)
                 {
-                    spawnGroups.Add(new SpawnGroupOccurrences(spawnEntry.Name, spawnPoints));
+                    spawnGroups.Add(new SpawnGroupOccurrences(
+                        spawnEntry.Name,
+                        spawnEntry.SpawnPoints,
+                        spawnPoints));
                 }
             }
 
@@ -136,7 +139,10 @@ internal sealed record SpawnEntryData(string Name, IReadOnlyList<SpawnPoint> Spa
 
 internal sealed record MapEnemyOccurrences(string MapName, string RelativePath, IReadOnlyList<SpawnGroupOccurrences> SpawnGroups);
 
-internal sealed record SpawnGroupOccurrences(string SpawnName, IReadOnlyList<SpawnPointOccurrences> SpawnPoints);
+internal sealed record SpawnGroupOccurrences(
+    string SpawnName,
+    IReadOnlyList<SpawnPoint> AllSpawnPoints,
+    IReadOnlyList<SpawnPointOccurrences> SpawnPoints);
 
 internal sealed record SpawnPointOccurrences(SpawnPoint Spawn, IReadOnlyList<SpawnPoint.Entity> Entities);
 
