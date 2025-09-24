@@ -52,7 +52,7 @@
             <TextBlock Text="Data Root:" VerticalAlignment="Center" Margin="0,0,8,0" />
             <TextBox Width="420" Text="{Binding DataRoot, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,8,0" />
             <Button Content="Browse..." Click="OnBrowseClick" Margin="0,0,8,0" />
-            <Button Content="Load" Click="OnLoadClick" />
+            <Button Content="Refresh" Click="OnRefreshClick" />
         </StackPanel>
 
         <Grid Grid.Row="1" Margin="10">
