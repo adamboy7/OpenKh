@@ -374,20 +374,15 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         var path = ParsePathSegments(map.RelativePath);
         var segments = new List<string> { exportRoot };
 
-        var gameSegment = string.IsNullOrEmpty(path.Game) ? region.Parent.Key : path.Game;
-        if (!string.IsNullOrEmpty(gameSegment))
-        {
-            segments.Add(gameSegment);
-        }
-
         var regionSegment = string.IsNullOrEmpty(path.Region) ? region.Key : path.Region;
-        if (!string.IsNullOrEmpty(regionSegment))
+        if (!string.IsNullOrWhiteSpace(regionSegment))
         {
-            segments.Add(regionSegment);
+            segments.Add(SanitizeFileName(regionSegment, "region"));
         }
 
         segments.Add("ard");
-        segments.Add(map.MapName);
+        var mapSegment = string.IsNullOrWhiteSpace(map.MapName) ? "map" : map.MapName;
+        segments.Add(SanitizeFileName(mapSegment, "map"));
 
         return Path.Combine(segments.ToArray());
     }
@@ -424,7 +419,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return new PathSegments(string.Empty, string.Empty);
         }
 
-        var normalized = relativePath.Replace('\\', '/');
+        var normalized = relativePath.Replace('\', '/');
         var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var game = segments.Length > 0 ? segments[0] : string.Empty;
         var region = segments.Length > 1 ? segments[1] : string.Empty;
@@ -535,11 +530,11 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
-    private static string SanitizeFileName(string name)
+    private static string SanitizeFileName(string name, string fallback = "spawn")
     {
         var invalid = Path.GetInvalidFileNameChars();
         var safe = new string(name.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
-        return string.IsNullOrWhiteSpace(safe) ? "spawn" : safe;
+        return string.IsNullOrWhiteSpace(safe) ? fallback : safe;
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -667,7 +662,7 @@ internal sealed class GameNodeViewModel
 
     public ObservableCollection<RegionNodeViewModel> Regions { get; }
 
-    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1} region(s))", Label, Regions.Count);
+    public string DisplayName => Label;
 }
 
 internal sealed class RegionNodeViewModel
@@ -683,7 +678,7 @@ internal sealed class RegionNodeViewModel
 
     public string Key { get; }
 
-    public string Label => string.IsNullOrWhiteSpace(Key) ? "(unknown region)" : Key.ToUpperInvariant();
+    public string Label => string.IsNullOrWhiteSpace(Key) ? "(unknown region)" : Key;
 
     public string FullLabel => string.IsNullOrWhiteSpace(Key)
         ? Parent.Label
@@ -691,7 +686,7 @@ internal sealed class RegionNodeViewModel
 
     public ObservableCollection<MapNodeViewModel> Maps { get; }
 
-    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1} map(s))", Label, Maps.Count);
+    public string DisplayName => Label;
 }
 
 internal sealed class MapNodeViewModel
@@ -709,31 +704,9 @@ internal sealed class MapNodeViewModel
 
     public ObservableCollection<SpawnGroupNodeViewModel> SpawnGroups { get; }
 
-    public string DisplayName
-    {
-        get
-        {
-            var suffix = GetPathSuffix(Source.RelativePath);
-            return string.Format(CultureInfo.InvariantCulture, "{0} ({1})", Source.MapName, suffix);
-        }
-    }
-
-    private static string GetPathSuffix(string? relativePath)
-    {
-        if (string.IsNullOrEmpty(relativePath))
-        {
-            return string.Empty;
-        }
-
-        var normalized = relativePath.Replace('\\', '/');
-        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length <= 2)
-        {
-            return normalized;
-        }
-
-        return string.Join('/', segments.Skip(2));
-    }
+    public string DisplayName => string.IsNullOrWhiteSpace(Source.MapName)
+        ? "(unknown map)"
+        : Source.MapName;
 }
 
 internal sealed class SpawnGroupNodeViewModel
@@ -751,7 +724,9 @@ internal sealed class SpawnGroupNodeViewModel
 
     public ObservableCollection<SpawnPointNodeViewModel> SpawnPoints { get; }
 
-    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1} spawnpoint(s))", Source.SpawnName, Source.SpawnPoints.Count);
+    public string DisplayName => string.IsNullOrWhiteSpace(Source.SpawnName)
+        ? "(unnamed script)"
+        : Source.SpawnName;
 }
 
 internal sealed class SpawnPointNodeViewModel
