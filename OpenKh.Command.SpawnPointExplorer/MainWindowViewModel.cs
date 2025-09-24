@@ -259,10 +259,24 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
-        PreviewContent = preview.Meshes != null
-            ? new MdlxViewportControl(preview.Meshes.ToList())
-            : null;
-        PreviewStatus = preview.StatusMessage;
+        if (preview.Meshes != null)
+        {
+            try
+            {
+                PreviewContent = new MdlxViewportControl(preview.Meshes.ToList());
+                PreviewStatus = preview.StatusMessage;
+            }
+            catch (Exception ex)
+            {
+                PreviewContent = null;
+                PreviewStatus = "Failed to display model preview: " + ex.Message;
+            }
+        }
+        else
+        {
+            PreviewContent = null;
+            PreviewStatus = preview.StatusMessage;
+        }
     }
 
     private static string GetAbsolutePath(string path)

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Media3D;
 
 namespace OpenKh.Command.SpawnPointExplorer;
@@ -57,6 +59,8 @@ internal static class MdlxPreviewBuilder
                 return MdlxPreviewResult.Fail("The MDLX did not produce any renderable geometry.");
             }
 
+            FreezeMeshes(meshes);
+
             var status = string.Format(
                 CultureInfo.InvariantCulture,
                 "{0} • {1} mesh(es)",
@@ -68,6 +72,56 @@ internal static class MdlxPreviewBuilder
         catch (Exception ex)
         {
             return MdlxPreviewResult.Fail(ex.Message);
+        }
+    }
+
+    private static void FreezeMeshes(IEnumerable<GeometryModel3D> meshes)
+    {
+        foreach (var mesh in meshes)
+        {
+            if (mesh.Geometry is Freezable geometry)
+            {
+                TryFreeze(geometry);
+            }
+
+            if (mesh.Material is DiffuseMaterial diffuse)
+            {
+                FreezeDiffuseMaterial(diffuse);
+            }
+            else if (mesh.Material is Freezable material)
+            {
+                TryFreeze(material);
+            }
+
+            if (mesh.BackMaterial is Freezable backMaterial)
+            {
+                TryFreeze(backMaterial);
+            }
+
+            TryFreeze(mesh);
+        }
+    }
+
+    private static void FreezeDiffuseMaterial(DiffuseMaterial material)
+    {
+        if (material.Brush is ImageBrush imageBrush)
+        {
+            TryFreeze(imageBrush.ImageSource as Freezable);
+            TryFreeze(imageBrush);
+        }
+        else
+        {
+            TryFreeze(material.Brush as Freezable);
+        }
+
+        TryFreeze(material);
+    }
+
+    private static void TryFreeze(Freezable? freezable)
+    {
+        if (freezable != null && freezable.CanFreeze && !freezable.IsFrozen)
+        {
+            freezable.Freeze();
         }
     }
 }
