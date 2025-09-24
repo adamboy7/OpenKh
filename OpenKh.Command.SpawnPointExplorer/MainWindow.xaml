@@ -24,6 +24,12 @@
             <TextBlock Text="{Binding DisplayName}" />
         </DataTemplate>
         <Style TargetType="TreeViewItem">
+            <Setter Property="Tag">
+                <Setter.Value>
+                    <Binding Path="DataContext.ExportSelectionCommand"
+                             RelativeSource="{RelativeSource AncestorType=Window}" />
+                </Setter.Value>
+            </Setter>
             <Setter Property="ContextMenu">
                 <Setter.Value>
                     <ContextMenu>
