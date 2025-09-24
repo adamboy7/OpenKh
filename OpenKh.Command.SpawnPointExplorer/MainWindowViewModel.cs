@@ -395,7 +395,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return string.Empty;
         }
 
-        var normalized = relativePath.Replace('\', '/');
+        var normalized = relativePath.Replace('\\', '/');
         var separatorIndex = normalized.IndexOf('/');
         return separatorIndex > 0 ? normalized.Substring(0, separatorIndex) : string.Empty;
     }
