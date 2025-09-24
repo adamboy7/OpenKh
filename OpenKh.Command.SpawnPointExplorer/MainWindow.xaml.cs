@@ -14,7 +14,7 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
     }
 
-    private void OnBrowseClick(object sender, RoutedEventArgs e)
+    private async void OnBrowseClick(object sender, RoutedEventArgs e)
     {
         using var dialog = new Forms.FolderBrowserDialog
         {
@@ -29,10 +29,11 @@ public partial class MainWindow : Window
         if (dialog.ShowDialog() == Forms.DialogResult.OK)
         {
             _viewModel.DataRoot = dialog.SelectedPath;
+            await _viewModel.LoadAsync();
         }
     }
 
-    private async void OnLoadClick(object sender, RoutedEventArgs e)
+    private async void OnRefreshClick(object sender, RoutedEventArgs e)
     {
         await _viewModel.LoadAsync();
     }
