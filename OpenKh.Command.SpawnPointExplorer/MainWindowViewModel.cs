@@ -321,7 +321,10 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
         using var dialog = new Forms.FolderBrowserDialog
         {
-            Description = string.Format(CultureInfo.InvariantCulture, "Select the export root directory for region {0}", regionNode.Label)
+            Description = string.Format(
+                CultureInfo.InvariantCulture,
+                "Select the export root directory for region {0}",
+                regionNode.Label)
         };
 
         if (!string.IsNullOrEmpty(DataRoot) && Directory.Exists(DataRoot))
@@ -339,7 +342,12 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             await Task.Run(() => ExportRegionGroups(exportRoot, exports));
-            StatusMessage = string.Format(CultureInfo.InvariantCulture, "Exported {0} spawn group(s) for region {1} to {2}.", exports.Count, regionNode.Label, exportRoot);
+            StatusMessage = string.Format(
+                CultureInfo.InvariantCulture,
+                "Exported {0} spawn group(s) for region {1} to {2}.",
+                exports.Count,
+                regionNode.Label,
+                exportRoot);
         }
         catch (Exception ex)
         {
@@ -467,10 +475,18 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
                 return new ExportResult(mapModel, mapNode.Source.MapName + ".yml");
             case SpawnGroupNodeViewModel groupNode:
                 var groupModel = SpawnExportModel.FromGroup(groupNode.Parent.Source, groupNode.Source);
-                return new ExportResult(groupModel, groupNode.Parent.Source.MapName + "_" + SanitizeFileName(groupNode.Source.SpawnName) + ".yml");
+                return new ExportResult(
+                    groupModel,
+                    groupNode.Parent.Source.MapName + "_" + SanitizeFileName(groupNode.Source.SpawnName) + ".yml");
             case SpawnPointNodeViewModel pointNode:
-                var pointModel = SpawnExportModel.FromPoint(pointNode.Parent.Parent.Source, pointNode.Parent.Source, pointNode.Source);
-                return new ExportResult(pointModel, pointNode.Parent.Parent.Source.MapName + "_" + SanitizeFileName(pointNode.Parent.Source.SpawnName) + "_" + pointNode.Source.Spawn.Id.ToString("X04", CultureInfo.InvariantCulture) + ".yml");
+                var pointModel = SpawnExportModel.FromPoint(
+                    pointNode.Parent.Parent.Source,
+                    pointNode.Parent.Source,
+                    pointNode.Source);
+                return new ExportResult(
+                    pointModel,
+                    pointNode.Parent.Parent.Source.MapName + "_" + SanitizeFileName(pointNode.Parent.Source.SpawnName) + "_" +
+                    pointNode.Source.Spawn.Id.ToString("X04", CultureInfo.InvariantCulture) + ".yml");
             default:
                 return null;
         }
