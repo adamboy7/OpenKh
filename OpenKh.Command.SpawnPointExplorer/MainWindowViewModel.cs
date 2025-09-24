@@ -1,5 +1,6 @@
 using OpenKh.Kh2;
 using OpenKh.Kh2.Ard;
+using OpenKh.Command.SpawnPointExplorer.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -10,6 +11,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Media3D;
 using YamlDotNet.Serialization;
@@ -31,7 +33,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     private string _previewStatus = "";
     private string _occurrenceSummary = "";
     private string _selectedCandidateDetails = "";
-    private Model3DGroup? _previewModel;
+    private UIElement? _previewContent;
     private bool _isBusy;
 
     public MainWindowViewModel()
@@ -89,10 +91,10 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         private set => SetProperty(ref _selectedCandidateDetails, value);
     }
 
-    public Model3DGroup? PreviewModel
+    public UIElement? PreviewContent
     {
-        get => _previewModel;
-        private set => SetProperty(ref _previewModel, value);
+        get => _previewContent;
+        private set => SetProperty(ref _previewContent, value);
     }
 
     public bool IsBusy
@@ -124,7 +126,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         SelectedCandidate = null;
         Candidates.Clear();
         OccurrenceMaps.Clear();
-        PreviewModel = null;
+        PreviewContent = null;
         PreviewStatus = string.Empty;
         OccurrenceSummary = string.Empty;
         SelectedCandidateDetails = string.Empty;
@@ -215,7 +217,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         if (_spawnData == null || candidate == null)
         {
             OccurrenceMaps.Clear();
-            PreviewModel = null;
+            PreviewContent = null;
             PreviewStatus = string.Empty;
             OccurrenceSummary = string.Empty;
             SelectedCandidateDetails = string.Empty;
@@ -243,7 +245,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         var modelPath = candidate.ModelPath;
         if (string.IsNullOrEmpty(modelPath))
         {
-            PreviewModel = null;
+            PreviewContent = null;
             PreviewStatus = string.IsNullOrEmpty(candidate.ModelName)
                 ? "The selected entry does not reference a model name in objentry."
                 : string.Format(CultureInfo.InvariantCulture, "Model '{0}' not found under kh2/obj.", candidate.ModelName);
@@ -257,8 +259,24 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
-        PreviewModel = preview.Model;
-        PreviewStatus = preview.StatusMessage;
+        if (preview.Meshes != null)
+        {
+            try
+            {
+                PreviewContent = new MdlxViewportControl(preview.Meshes.ToList());
+                PreviewStatus = preview.StatusMessage;
+            }
+            catch (Exception ex)
+            {
+                PreviewContent = null;
+                PreviewStatus = "Failed to display model preview: " + ex.Message;
+            }
+        }
+        else
+        {
+            PreviewContent = null;
+            PreviewStatus = preview.StatusMessage;
+        }
     }
 
     private static string GetAbsolutePath(string path)

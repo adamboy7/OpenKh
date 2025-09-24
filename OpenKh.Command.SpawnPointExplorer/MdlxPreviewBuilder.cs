@@ -1,7 +1,9 @@
+using OpenKh.Command.SpawnPointExplorer.Utils;
 using OpenKh.Kh2;
 using OpenKh.Kh2.Models;
-using OpenKh.Tools.Common.Wpf;
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -50,31 +52,22 @@ internal static class MdlxPreviewBuilder
                 return MdlxPreviewResult.Fail("The MDLX does not contain model data.");
             }
 
-            var group = new Model3DGroup();
-            foreach (var skeletalGroup in model.Groups)
-            {
-                var geometry = CreateMesh(skeletalGroup);
-                var material = CreateMaterial(skeletalGroup, texture);
-                var model3D = new GeometryModel3D(geometry, material)
-                {
-                    BackMaterial = material
-                };
-                model3D.Freeze();
-                group.Children.Add(model3D);
-            }
-
-            if (!group.Children.Any())
+            model.recalculateMeshes();
+            var meshes = Viewport3DUtils.getGeometryFromModel(model, texture);
+            if (!meshes.Any())
             {
                 return MdlxPreviewResult.Fail("The MDLX did not produce any renderable geometry.");
             }
 
-            group.Freeze();
+            FreezeMeshes(meshes);
+
             var status = string.Format(
-                System.Globalization.CultureInfo.InvariantCulture,
+                CultureInfo.InvariantCulture,
                 "{0} • {1} mesh(es)",
                 Path.GetFileName(path),
-                group.Children.Count);
-            return MdlxPreviewResult.Success(group, status);
+                meshes.Count);
+
+            return MdlxPreviewResult.Success(meshes, status);
         }
         catch (Exception ex)
         {
@@ -82,90 +75,60 @@ internal static class MdlxPreviewBuilder
         }
     }
 
-    private static MeshGeometry3D CreateMesh(ModelSkeletal.SkeletalGroup group)
+    private static void FreezeMeshes(IEnumerable<GeometryModel3D> meshes)
     {
-        var geometry = new MeshGeometry3D();
-        var positions = new Point3DCollection(group.Mesh.Vertices.Count);
-        var normals = new Vector3DCollection(group.Mesh.Vertices.Count);
-        var textureCoordinates = new PointCollection(group.Mesh.Vertices.Count);
-
-        foreach (var vertex in group.Mesh.Vertices)
+        foreach (var mesh in meshes)
         {
-            positions.Add(new Point3D(vertex.Position.X, vertex.Position.Y, vertex.Position.Z));
-            if (vertex.Normal != null)
+            if (mesh.Geometry is Freezable geometry)
             {
-                normals.Add(new Vector3D(vertex.Normal.X, vertex.Normal.Y, vertex.Normal.Z));
-            }
-            else
-            {
-                normals.Add(new Vector3D());
+                TryFreeze(geometry);
             }
 
-            textureCoordinates.Add(new Point(vertex.U / 4096.0f, vertex.V / 4096.0f));
+            if (mesh.Material is DiffuseMaterial diffuse)
+            {
+                FreezeDiffuseMaterial(diffuse);
+            }
+            else if (mesh.Material is Freezable material)
+            {
+                TryFreeze(material);
+            }
+
+            if (mesh.BackMaterial is Freezable backMaterial)
+            {
+                TryFreeze(backMaterial);
+            }
+
+            TryFreeze(mesh);
         }
-
-        geometry.Positions = positions;
-        geometry.Normals = normals;
-        geometry.TextureCoordinates = textureCoordinates;
-
-        var triangleIndices = new Int32Collection(group.Mesh.Triangles.Sum(triangle => triangle.Count));
-        foreach (var triangle in group.Mesh.Triangles)
-        {
-            foreach (var index in triangle)
-            {
-                triangleIndices.Add(index);
-            }
-        }
-
-        geometry.TriangleIndices = triangleIndices;
-        geometry.Freeze();
-        return geometry;
     }
 
-    private static Material CreateMaterial(ModelSkeletal.SkeletalGroup group, ModelTexture? texture)
+    private static void FreezeDiffuseMaterial(DiffuseMaterial material)
     {
-        Brush? brush = null;
-
-        if (texture != null)
+        if (material.Brush is ImageBrush imageBrush)
         {
-            try
-            {
-                var textureIndex = (int)group.Header.TextureIndex;
-                if (textureIndex >= 0 && textureIndex < texture.Images.Count)
-                {
-                    var image = texture.Images[textureIndex].GetBimapSource();
-                    brush = new ImageBrush(image)
-                    {
-                        Stretch = Stretch.Uniform
-                    };
-                }
-            }
-            catch
-            {
-                // Fallback to solid color below.
-            }
+            TryFreeze(imageBrush.ImageSource as Freezable);
+            TryFreeze(imageBrush);
+        }
+        else
+        {
+            TryFreeze(material.Brush as Freezable);
         }
 
-        brush ??= new SolidColorBrush(Color.FromRgb(200, 200, 200));
-        brush.Freeze();
+        TryFreeze(material);
+    }
 
-        var diffuse = new DiffuseMaterial(brush);
-        diffuse.Freeze();
-
-        var emissive = new EmissiveMaterial(brush);
-        emissive.Freeze();
-
-        var materialGroup = new MaterialGroup();
-        materialGroup.Children.Add(diffuse);
-        materialGroup.Children.Add(emissive);
-        materialGroup.Freeze();
-        return materialGroup;
+    private static void TryFreeze(Freezable? freezable)
+    {
+        if (freezable != null && freezable.CanFreeze && !freezable.IsFrozen)
+        {
+            freezable.Freeze();
+        }
     }
 }
 
-internal sealed record MdlxPreviewResult(Model3DGroup? Model, string StatusMessage)
+internal sealed record MdlxPreviewResult(IReadOnlyList<GeometryModel3D>? Meshes, string StatusMessage)
 {
-    public static MdlxPreviewResult Success(Model3DGroup model, string status) => new(model, status);
+    public static MdlxPreviewResult Success(IReadOnlyList<GeometryModel3D> meshes, string status) => new(meshes, status);
 
     public static MdlxPreviewResult Fail(string message) => new(null, message);
 }

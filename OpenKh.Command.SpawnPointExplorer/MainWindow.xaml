@@ -4,7 +4,6 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:OpenKh.Command.SpawnPointExplorer"
-        xmlns:h="http://helix-toolkit.org/wpf"
         mc:Ignorable="d"
         Title="Spawn Point Explorer" Height="720" Width="1200" MinWidth="900" MinHeight="600">
     <Window.Resources>
@@ -81,10 +80,9 @@
                             <RowDefinition Height="*" />
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
-                        <h:HelixViewport3D Grid.Row="0" x:Name="Viewport" ShowFrameRate="False">
-                            <h:DefaultLights />
-                            <ModelVisual3D Content="{Binding PreviewModel}" />
-                        </h:HelixViewport3D>
+                        <ContentControl Grid.Row="0"
+                                        Background="#FF000000"
+                                        Content="{Binding PreviewContent}" />
                         <TextBlock Grid.Row="1" Text="{Binding PreviewStatus}" Margin="6" TextWrapping="Wrap" />
                     </Grid>
                 </Border>
