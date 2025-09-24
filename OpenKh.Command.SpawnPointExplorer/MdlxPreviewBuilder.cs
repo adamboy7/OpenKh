@@ -152,14 +152,7 @@ internal static class MdlxPreviewBuilder
         var diffuse = new DiffuseMaterial(brush);
         diffuse.Freeze();
 
-        var emissive = new EmissiveMaterial(brush);
-        emissive.Freeze();
-
-        var materialGroup = new MaterialGroup();
-        materialGroup.Children.Add(diffuse);
-        materialGroup.Children.Add(emissive);
-        materialGroup.Freeze();
-        return materialGroup;
+        return diffuse;
     }
 }
 
