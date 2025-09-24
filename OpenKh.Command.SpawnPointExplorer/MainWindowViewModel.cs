@@ -240,7 +240,8 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         }
 
         OccurrenceRegions.Clear();
-        foreach (var game in BuildGameNodes(occurrences))
+        var defaultGame = GetDefaultGameKey(_spawnData.RootPath);
+        foreach (var game in BuildGameNodes(occurrences, defaultGame))
         {
             OccurrenceRegions.Add(game);
         }
@@ -371,7 +372,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private static string GetMapExportDirectory(string exportRoot, RegionNodeViewModel region, MapEnemyOccurrences map)
     {
-        var path = ParsePathSegments(map.RelativePath);
+        var path = ParsePathSegments(map.RelativePath, region.Parent.Key);
         var segments = new List<string> { exportRoot };
 
         var regionSegment = string.IsNullOrEmpty(path.Region) ? region.Key : path.Region;
@@ -387,21 +388,25 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         return Path.Combine(segments.ToArray());
     }
 
-    private static IEnumerable<GameNodeViewModel> BuildGameNodes(IReadOnlyList<MapEnemyOccurrences> occurrences)
+    private static IEnumerable<GameNodeViewModel> BuildGameNodes(
+        IReadOnlyList<MapEnemyOccurrences> occurrences,
+        string defaultGame)
     {
         return occurrences
-            .GroupBy(map => ParsePathSegments(map.RelativePath).Game, StringComparer.OrdinalIgnoreCase)
+            .Select(map => new { Map = map, Segments = ParsePathSegments(map.RelativePath, defaultGame) })
+            .GroupBy(item => item.Segments.Game, StringComparer.OrdinalIgnoreCase)
             .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
                 var gameNode = new GameNodeViewModel(group.Key);
                 var regionGroups = group
-                    .GroupBy(map => ParsePathSegments(map.RelativePath).Region, StringComparer.OrdinalIgnoreCase)
+                    .GroupBy(item => item.Segments.Region, StringComparer.OrdinalIgnoreCase)
                     .OrderBy(regionGroup => regionGroup.Key, StringComparer.OrdinalIgnoreCase);
 
                 foreach (var regionGroup in regionGroups)
                 {
                     var regionMaps = regionGroup
+                        .Select(item => item.Map)
                         .OrderBy(map => map.MapName, StringComparer.OrdinalIgnoreCase)
                         .ToList();
                     var regionNode = new RegionNodeViewModel(gameNode, regionGroup.Key, regionMaps);
@@ -412,17 +417,52 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             });
     }
 
-    private static PathSegments ParsePathSegments(string? relativePath)
+    private static PathSegments ParsePathSegments(string? relativePath, string defaultGame)
     {
         if (string.IsNullOrEmpty(relativePath))
         {
-            return new PathSegments(string.Empty, string.Empty);
+            return new PathSegments(defaultGame, string.Empty);
         }
 
         var normalized = relativePath.Replace("\\", "/");
         var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        var game = segments.Length > 0 ? segments[0] : string.Empty;
-        var region = segments.Length > 1 ? segments[1] : string.Empty;
+        if (segments.Length == 0)
+        {
+            return new PathSegments(defaultGame, string.Empty);
+        }
+
+        var ardIndex = Array.FindIndex(segments, segment =>
+            string.Equals(segment, "ard", StringComparison.OrdinalIgnoreCase));
+
+        string game = defaultGame;
+        string region = string.Empty;
+
+        if (ardIndex >= 0)
+        {
+            if (ardIndex > 0)
+            {
+                game = segments[ardIndex - 1];
+            }
+            else if (segments.Length > 0 && string.IsNullOrEmpty(game))
+            {
+                game = segments[0];
+            }
+
+            var regionIndex = ardIndex + 1;
+            if (regionIndex < segments.Length)
+            {
+                region = segments[regionIndex];
+            }
+        }
+        else
+        {
+            game = segments[0];
+            if (segments.Length > 1)
+            {
+                region = segments[1];
+            }
+        }
+
         return new PathSegments(game, region);
     }
 
@@ -436,6 +476,18 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
         public string Game { get; }
         public string Region { get; }
+    }
+
+    private static string GetDefaultGameKey(string rootPath)
+    {
+        if (string.IsNullOrWhiteSpace(rootPath))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var name = Path.GetFileName(trimmed);
+        return string.IsNullOrWhiteSpace(name) ? trimmed : name;
     }
 
     private static LoadResult LoadInternal(string rootPath)
