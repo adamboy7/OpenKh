@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Media3D;
+using Forms = System.Windows.Forms;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -22,7 +23,7 @@ namespace OpenKh.Command.SpawnPointExplorer;
 internal sealed class MainWindowViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<EnemyCandidateViewModel> _candidates = new();
-    private readonly ObservableCollection<MapNodeViewModel> _occurrenceMaps = new();
+    private readonly ObservableCollection<RegionNodeViewModel> _occurrenceRegions = new();
 
     private SpawnDataSet? _spawnData;
     private IReadOnlyDictionary<string, string> _modelIndex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -44,7 +45,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<EnemyCandidateViewModel> Candidates => _candidates;
-    public ObservableCollection<MapNodeViewModel> OccurrenceMaps => _occurrenceMaps;
+    public ObservableCollection<RegionNodeViewModel> OccurrenceRegions => _occurrenceRegions;
 
     public ICommand ExportSelectionCommand { get; }
 
@@ -125,7 +126,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         StatusMessage = "Scanning spawnpoints...";
         SelectedCandidate = null;
         Candidates.Clear();
-        OccurrenceMaps.Clear();
+        OccurrenceRegions.Clear();
         PreviewContent = null;
         PreviewStatus = string.Empty;
         OccurrenceSummary = string.Empty;
@@ -169,13 +170,19 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (selection == null)
         {
-            StatusMessage = "Select a map, spawn group, or spawn point to export.";
+            StatusMessage = "Select a region, map, spawn group, or spawn point to export.";
             return;
         }
 
         if (_spawnData == null)
         {
             StatusMessage = "Load spawn data before exporting.";
+            return;
+        }
+
+        if (selection is RegionNodeViewModel regionNode)
+        {
+            await ExportRegionAsync(regionNode);
             return;
         }
 
@@ -216,7 +223,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_spawnData == null || candidate == null)
         {
-            OccurrenceMaps.Clear();
+            OccurrenceRegions.Clear();
             PreviewContent = null;
             PreviewStatus = string.Empty;
             OccurrenceSummary = string.Empty;
@@ -232,10 +239,10 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
-        OccurrenceMaps.Clear();
-        foreach (var map in occurrences)
+        OccurrenceRegions.Clear();
+        foreach (var region in BuildRegionNodes(occurrences))
         {
-            OccurrenceMaps.Add(new MapNodeViewModel(map));
+            OccurrenceRegions.Add(region);
         }
 
         OccurrenceSummary = occurrences.Count == 0
@@ -298,6 +305,91 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
         var yaml = serializer.Serialize(model);
         File.WriteAllText(filePath, yaml);
+    }
+
+    private async Task ExportRegionAsync(RegionNodeViewModel regionNode)
+    {
+        var exports = regionNode.Maps
+            .SelectMany(map => map.SpawnGroups.Select(group => new RegionExportItem(map, group)))
+            .ToList();
+
+        if (exports.Count == 0)
+        {
+            StatusMessage = "No spawn groups to export.";
+            return;
+        }
+
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = string.Format(CultureInfo.InvariantCulture, "Select the export root directory for region {0}", regionNode.Label)
+        };
+
+        if (!string.IsNullOrEmpty(DataRoot) && Directory.Exists(DataRoot))
+        {
+            dialog.SelectedPath = DataRoot;
+        }
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        var exportRoot = dialog.SelectedPath;
+
+        try
+        {
+            await Task.Run(() => ExportRegionGroups(exportRoot, exports));
+            StatusMessage = string.Format(CultureInfo.InvariantCulture, "Exported {0} spawn group(s) for region {1} to {2}.", exports.Count, regionNode.Label, exportRoot);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Failed to export YAML: " + ex.Message;
+        }
+    }
+
+    private static void ExportRegionGroups(string exportRoot, IReadOnlyList<RegionExportItem> exports)
+    {
+        foreach (var export in exports)
+        {
+            var directory = GetMapExportDirectory(exportRoot, export.Map.Source);
+            Directory.CreateDirectory(directory);
+
+            var fileName = SanitizeFileName(export.Group.Source.SpawnName) + ".yml";
+            var filePath = Path.Combine(directory, fileName);
+            var model = SpawnExportModel.FromGroup(export.Map.Source, export.Group.Source);
+            WriteYaml(filePath, model);
+        }
+    }
+
+    private static string GetMapExportDirectory(string exportRoot, MapEnemyOccurrences map)
+    {
+        var normalizedPath = map.RelativePath.Replace('/', Path.DirectorySeparatorChar);
+        var relativeDirectory = Path.GetDirectoryName(normalizedPath);
+        return string.IsNullOrEmpty(relativeDirectory)
+            ? Path.Combine(exportRoot, map.MapName)
+            : Path.Combine(exportRoot, relativeDirectory, map.MapName);
+    }
+
+    private static IEnumerable<RegionNodeViewModel> BuildRegionNodes(IReadOnlyList<MapEnemyOccurrences> occurrences)
+    {
+        return occurrences
+            .GroupBy(map => GetRegionKey(map.RelativePath), StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new RegionNodeViewModel(group.Key, group
+                .OrderBy(map => map.MapName, StringComparer.OrdinalIgnoreCase)
+                .ToList()));
+    }
+
+    private static string GetRegionKey(string relativePath)
+    {
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            return string.Empty;
+        }
+
+        var normalized = relativePath.Replace('\', '/');
+        var separatorIndex = normalized.IndexOf('/');
+        return separatorIndex > 0 ? normalized.Substring(0, separatorIndex) : string.Empty;
     }
 
     private static LoadResult LoadInternal(string rootPath)
@@ -457,6 +549,8 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         List<SpawnScanIssue> Issues);
 
     private sealed record ExportResult(SpawnExportModel Model, string SuggestedFileName);
+
+    private sealed record RegionExportItem(MapNodeViewModel Map, SpawnGroupNodeViewModel Group);
 }
 
 internal sealed record EnemyCandidateViewModel(
@@ -500,13 +594,33 @@ internal sealed record EnemyCandidateViewModel(
     }
 }
 
+internal sealed class RegionNodeViewModel
+{
+    public RegionNodeViewModel(string key, IReadOnlyList<MapEnemyOccurrences> maps)
+    {
+        Key = key;
+        Maps = new ObservableCollection<MapNodeViewModel>(maps.Select(map => new MapNodeViewModel(this, map)));
+    }
+
+    public string Key { get; }
+
+    public string Label => string.IsNullOrWhiteSpace(Key) ? "(root)" : Key;
+
+    public ObservableCollection<MapNodeViewModel> Maps { get; }
+
+    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1} map(s))", Label, Maps.Count);
+}
+
 internal sealed class MapNodeViewModel
 {
-    public MapNodeViewModel(MapEnemyOccurrences source)
+    public MapNodeViewModel(RegionNodeViewModel parent, MapEnemyOccurrences source)
     {
+        Parent = parent;
         Source = source;
         SpawnGroups = new ObservableCollection<SpawnGroupNodeViewModel>(source.SpawnGroups.Select(group => new SpawnGroupNodeViewModel(this, group)));
     }
+
+    public RegionNodeViewModel Parent { get; }
 
     public MapEnemyOccurrences Source { get; }
 
