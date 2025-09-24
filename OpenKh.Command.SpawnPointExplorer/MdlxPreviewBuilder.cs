@@ -2,6 +2,7 @@ using OpenKh.Kh2;
 using OpenKh.Kh2.Models;
 using OpenKh.Tools.Common.Wpf;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -84,40 +85,104 @@ internal static class MdlxPreviewBuilder
 
     private static MeshGeometry3D CreateMesh(ModelSkeletal.SkeletalGroup group)
     {
-        var geometry = new MeshGeometry3D();
-        var positions = new Point3DCollection(group.Mesh.Vertices.Count);
-        var normals = new Vector3DCollection(group.Mesh.Vertices.Count);
-        var textureCoordinates = new PointCollection(group.Mesh.Vertices.Count);
+        var vertexCount = group.Mesh.Vertices.Count;
+        var positions = new Point3D[vertexCount];
+        var normals = new Vector3D[vertexCount];
+        var hasNormals = new bool[vertexCount];
+        var textureCoordinates = new Point[vertexCount];
 
-        foreach (var vertex in group.Mesh.Vertices)
+        for (var index = 0; index < vertexCount; index++)
         {
-            positions.Add(new Point3D(vertex.Position.X, vertex.Position.Y, vertex.Position.Z));
-            if (vertex.Normal != null)
+            var vertex = group.Mesh.Vertices[index];
+            positions[index] = new Point3D(vertex.Position.X, vertex.Position.Y, vertex.Position.Z);
+            textureCoordinates[index] = new Point(vertex.U / 4096.0f, vertex.V / 4096.0f);
+
+            if (vertex.Normal == null)
             {
-                normals.Add(new Vector3D(vertex.Normal.X, vertex.Normal.Y, vertex.Normal.Z));
-            }
-            else
-            {
-                normals.Add(new Vector3D());
+                continue;
             }
 
-            textureCoordinates.Add(new Point(vertex.U / 4096.0f, vertex.V / 4096.0f));
+            var normal = new Vector3D(vertex.Normal.X, vertex.Normal.Y, vertex.Normal.Z);
+            if (normal.LengthSquared <= double.Epsilon)
+            {
+                continue;
+            }
+
+            normal.Normalize();
+            normals[index] = normal;
+            hasNormals[index] = true;
         }
 
-        geometry.Positions = positions;
-        geometry.Normals = normals;
-        geometry.TextureCoordinates = textureCoordinates;
-
-        var triangleIndices = new Int32Collection(group.Mesh.Triangles.Sum(triangle => triangle.Count));
+        var triangleIndexList = new List<int>(group.Mesh.Triangles.Sum(triangle => triangle.Count));
         foreach (var triangle in group.Mesh.Triangles)
         {
-            foreach (var index in triangle)
+            foreach (var vertexIndex in triangle)
             {
-                triangleIndices.Add(index);
+                triangleIndexList.Add(vertexIndex);
             }
         }
 
-        geometry.TriangleIndices = triangleIndices;
+        if (hasNormals.Any(hasNormal => !hasNormal))
+        {
+            var computedNormals = new Vector3D[vertexCount];
+            for (var i = 0; i <= triangleIndexList.Count - 3; i += 3)
+            {
+                var i0 = triangleIndexList[i];
+                var i1 = triangleIndexList[i + 1];
+                var i2 = triangleIndexList[i + 2];
+
+                if (i0 < 0 || i0 >= vertexCount ||
+                    i1 < 0 || i1 >= vertexCount ||
+                    i2 < 0 || i2 >= vertexCount)
+                {
+                    continue;
+                }
+
+                var p0 = positions[i0];
+                var p1 = positions[i1];
+                var p2 = positions[i2];
+
+                var edge1 = p1 - p0;
+                var edge2 = p2 - p0;
+                var faceNormal = Vector3D.CrossProduct(edge1, edge2);
+
+                if (faceNormal.LengthSquared <= double.Epsilon)
+                {
+                    continue;
+                }
+
+                faceNormal.Normalize();
+                computedNormals[i0] += faceNormal;
+                computedNormals[i1] += faceNormal;
+                computedNormals[i2] += faceNormal;
+            }
+
+            for (var index = 0; index < vertexCount; index++)
+            {
+                if (hasNormals[index])
+                {
+                    continue;
+                }
+
+                var normal = computedNormals[index];
+                if (normal.LengthSquared <= double.Epsilon)
+                {
+                    continue;
+                }
+
+                normal.Normalize();
+                normals[index] = normal;
+            }
+        }
+
+        var geometry = new MeshGeometry3D
+        {
+            Positions = new Point3DCollection(positions),
+            Normals = new Vector3DCollection(normals),
+            TextureCoordinates = new PointCollection(textureCoordinates),
+            TriangleIndices = new Int32Collection(triangleIndexList)
+        };
+
         geometry.Freeze();
         return geometry;
     }
