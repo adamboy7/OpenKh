@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Media3D;
+using Forms = System.Windows.Forms;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
 
@@ -22,7 +23,7 @@ namespace OpenKh.Command.SpawnPointExplorer;
 internal sealed class MainWindowViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<EnemyCandidateViewModel> _candidates = new();
-    private readonly ObservableCollection<MapNodeViewModel> _occurrenceMaps = new();
+    private readonly ObservableCollection<GameNodeViewModel> _occurrenceGames = new();
 
     private SpawnDataSet? _spawnData;
     private IReadOnlyDictionary<string, string> _modelIndex = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -44,7 +45,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<EnemyCandidateViewModel> Candidates => _candidates;
-    public ObservableCollection<MapNodeViewModel> OccurrenceMaps => _occurrenceMaps;
+    public ObservableCollection<GameNodeViewModel> OccurrenceRegions => _occurrenceGames;
 
     public ICommand ExportSelectionCommand { get; }
 
@@ -125,7 +126,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         StatusMessage = "Scanning spawnpoints...";
         SelectedCandidate = null;
         Candidates.Clear();
-        OccurrenceMaps.Clear();
+        OccurrenceRegions.Clear();
         PreviewContent = null;
         PreviewStatus = string.Empty;
         OccurrenceSummary = string.Empty;
@@ -169,13 +170,19 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (selection == null)
         {
-            StatusMessage = "Select a map, spawn group, or spawn point to export.";
+            StatusMessage = "Select a region, map, spawn group, or spawn point to export.";
             return;
         }
 
         if (_spawnData == null)
         {
             StatusMessage = "Load spawn data before exporting.";
+            return;
+        }
+
+        if (selection is RegionNodeViewModel regionNode)
+        {
+            await ExportRegionAsync(regionNode);
             return;
         }
 
@@ -216,7 +223,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         if (_spawnData == null || candidate == null)
         {
-            OccurrenceMaps.Clear();
+            OccurrenceRegions.Clear();
             PreviewContent = null;
             PreviewStatus = string.Empty;
             OccurrenceSummary = string.Empty;
@@ -232,10 +239,11 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return;
         }
 
-        OccurrenceMaps.Clear();
-        foreach (var map in occurrences)
+        OccurrenceRegions.Clear();
+        var defaultGame = GetDefaultGameKey(_spawnData.RootPath);
+        foreach (var game in BuildGameNodes(occurrences, defaultGame))
         {
-            OccurrenceMaps.Add(new MapNodeViewModel(map));
+            OccurrenceRegions.Add(game);
         }
 
         OccurrenceSummary = occurrences.Count == 0
@@ -298,6 +306,188 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
 
         var yaml = serializer.Serialize(model);
         File.WriteAllText(filePath, yaml);
+    }
+
+    private async Task ExportRegionAsync(RegionNodeViewModel regionNode)
+    {
+        var exports = regionNode.Maps
+            .SelectMany(map => map.SpawnGroups.Select(group => new RegionExportItem(map, group)))
+            .ToList();
+
+        if (exports.Count == 0)
+        {
+            StatusMessage = "No spawn groups to export.";
+            return;
+        }
+
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = string.Format(
+                CultureInfo.InvariantCulture,
+                "Select the export root directory for region {0}",
+                regionNode.FullLabel)
+        };
+
+        if (!string.IsNullOrEmpty(DataRoot) && Directory.Exists(DataRoot))
+        {
+            dialog.SelectedPath = DataRoot;
+        }
+
+        if (dialog.ShowDialog() != Forms.DialogResult.OK)
+        {
+            return;
+        }
+
+        var exportRoot = dialog.SelectedPath;
+
+        try
+        {
+            await Task.Run(() => ExportRegionGroups(exportRoot, exports));
+            StatusMessage = string.Format(
+                CultureInfo.InvariantCulture,
+                "Exported {0} spawn group(s) for region {1} to {2}.",
+                exports.Count,
+                regionNode.FullLabel,
+                exportRoot);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Failed to export YAML: " + ex.Message;
+        }
+    }
+
+    private static void ExportRegionGroups(string exportRoot, IReadOnlyList<RegionExportItem> exports)
+    {
+        foreach (var export in exports)
+        {
+            var directory = GetMapExportDirectory(exportRoot, export.Map.Parent, export.Map.Source);
+            Directory.CreateDirectory(directory);
+
+            var fileName = SanitizeFileName(export.Group.Source.SpawnName) + ".yml";
+            var filePath = Path.Combine(directory, fileName);
+            var model = SpawnExportModel.FromGroup(export.Map.Source, export.Group.Source);
+            WriteYaml(filePath, model);
+        }
+    }
+
+    private static string GetMapExportDirectory(string exportRoot, RegionNodeViewModel region, MapEnemyOccurrences map)
+    {
+        var path = ParsePathSegments(map.RelativePath, region.Parent.Key);
+        var segments = new List<string> { exportRoot };
+
+        var regionSegment = string.IsNullOrEmpty(path.Region) ? region.Key : path.Region;
+        if (!string.IsNullOrWhiteSpace(regionSegment))
+        {
+            segments.Add(SanitizeFileName(regionSegment, "region"));
+        }
+
+        segments.Add("ard");
+        var mapSegment = string.IsNullOrWhiteSpace(map.MapName) ? "map" : map.MapName;
+        segments.Add(SanitizeFileName(mapSegment, "map"));
+
+        return Path.Combine(segments.ToArray());
+    }
+
+    private static IEnumerable<GameNodeViewModel> BuildGameNodes(
+        IReadOnlyList<MapEnemyOccurrences> occurrences,
+        string defaultGame)
+    {
+        return occurrences
+            .Select(map => new { Map = map, Segments = ParsePathSegments(map.RelativePath, defaultGame) })
+            .GroupBy(item => item.Segments.Game, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var gameNode = new GameNodeViewModel(group.Key);
+                var regionGroups = group
+                    .GroupBy(item => item.Segments.Region, StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(regionGroup => regionGroup.Key, StringComparer.OrdinalIgnoreCase);
+
+                foreach (var regionGroup in regionGroups)
+                {
+                    var regionMaps = regionGroup
+                        .Select(item => item.Map)
+                        .OrderBy(map => map.MapName, StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    var regionNode = new RegionNodeViewModel(gameNode, regionGroup.Key, regionMaps);
+                    gameNode.Regions.Add(regionNode);
+                }
+
+                return gameNode;
+            });
+    }
+
+    private static PathSegments ParsePathSegments(string? relativePath, string defaultGame)
+    {
+        if (string.IsNullOrEmpty(relativePath))
+        {
+            return new PathSegments(defaultGame, string.Empty);
+        }
+
+        var normalized = relativePath.Replace("\\", "/");
+        var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 0)
+        {
+            return new PathSegments(defaultGame, string.Empty);
+        }
+
+        var ardIndex = Array.FindIndex(segments, segment =>
+            string.Equals(segment, "ard", StringComparison.OrdinalIgnoreCase));
+
+        string game = defaultGame;
+        string region = string.Empty;
+
+        if (ardIndex >= 0)
+        {
+            if (ardIndex > 0)
+            {
+                game = segments[ardIndex - 1];
+            }
+            else if (segments.Length > 0 && string.IsNullOrEmpty(game))
+            {
+                game = segments[0];
+            }
+
+            var regionIndex = ardIndex + 1;
+            if (regionIndex < segments.Length)
+            {
+                region = segments[regionIndex];
+            }
+        }
+        else
+        {
+            game = segments[0];
+            if (segments.Length > 1)
+            {
+                region = segments[1];
+            }
+        }
+
+        return new PathSegments(game, region);
+    }
+
+    private readonly struct PathSegments
+    {
+        public PathSegments(string game, string region)
+        {
+            Game = game ?? string.Empty;
+            Region = region ?? string.Empty;
+        }
+
+        public string Game { get; }
+        public string Region { get; }
+    }
+
+    private static string GetDefaultGameKey(string rootPath)
+    {
+        if (string.IsNullOrWhiteSpace(rootPath))
+        {
+            return string.Empty;
+        }
+
+        var trimmed = rootPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var name = Path.GetFileName(trimmed);
+        return string.IsNullOrWhiteSpace(name) ? trimmed : name;
     }
 
     private static LoadResult LoadInternal(string rootPath)
@@ -375,20 +565,28 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
                 return new ExportResult(mapModel, mapNode.Source.MapName + ".yml");
             case SpawnGroupNodeViewModel groupNode:
                 var groupModel = SpawnExportModel.FromGroup(groupNode.Parent.Source, groupNode.Source);
-                return new ExportResult(groupModel, groupNode.Parent.Source.MapName + "_" + SanitizeFileName(groupNode.Source.SpawnName) + ".yml");
+                return new ExportResult(
+                    groupModel,
+                    groupNode.Parent.Source.MapName + "_" + SanitizeFileName(groupNode.Source.SpawnName) + ".yml");
             case SpawnPointNodeViewModel pointNode:
-                var pointModel = SpawnExportModel.FromPoint(pointNode.Parent.Parent.Source, pointNode.Parent.Source, pointNode.Source);
-                return new ExportResult(pointModel, pointNode.Parent.Parent.Source.MapName + "_" + SanitizeFileName(pointNode.Parent.Source.SpawnName) + "_" + pointNode.Source.Spawn.Id.ToString("X04", CultureInfo.InvariantCulture) + ".yml");
+                var pointModel = SpawnExportModel.FromPoint(
+                    pointNode.Parent.Parent.Source,
+                    pointNode.Parent.Source,
+                    pointNode.Source);
+                return new ExportResult(
+                    pointModel,
+                    pointNode.Parent.Parent.Source.MapName + "_" + SanitizeFileName(pointNode.Parent.Source.SpawnName) + "_" +
+                    pointNode.Source.Spawn.Id.ToString("X04", CultureInfo.InvariantCulture) + ".yml");
             default:
                 return null;
         }
     }
 
-    private static string SanitizeFileName(string name)
+    private static string SanitizeFileName(string name, string fallback = "spawn")
     {
         var invalid = Path.GetInvalidFileNameChars();
         var safe = new string(name.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
-        return string.IsNullOrWhiteSpace(safe) ? "spawn" : safe;
+        return string.IsNullOrWhiteSpace(safe) ? fallback : safe;
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
@@ -457,6 +655,8 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
         List<SpawnScanIssue> Issues);
 
     private sealed record ExportResult(SpawnExportModel Model, string SuggestedFileName);
+
+    private sealed record RegionExportItem(MapNodeViewModel Map, SpawnGroupNodeViewModel Group);
 }
 
 internal sealed record EnemyCandidateViewModel(
@@ -500,19 +700,65 @@ internal sealed record EnemyCandidateViewModel(
     }
 }
 
+internal sealed class GameNodeViewModel
+{
+    public GameNodeViewModel(string key)
+    {
+        Key = key ?? string.Empty;
+        Regions = new ObservableCollection<RegionNodeViewModel>();
+    }
+
+    public string Key { get; }
+
+    public string Label => string.IsNullOrWhiteSpace(Key) ? "(root)" : Key.ToUpperInvariant();
+
+    public ObservableCollection<RegionNodeViewModel> Regions { get; }
+
+    public string DisplayName => Label;
+}
+
+internal sealed class RegionNodeViewModel
+{
+    public RegionNodeViewModel(GameNodeViewModel parent, string key, IReadOnlyList<MapEnemyOccurrences> maps)
+    {
+        Parent = parent ?? throw new ArgumentNullException(nameof(parent));
+        Key = key ?? string.Empty;
+        Maps = new ObservableCollection<MapNodeViewModel>(maps.Select(map => new MapNodeViewModel(this, map)));
+    }
+
+    public GameNodeViewModel Parent { get; }
+
+    public string Key { get; }
+
+    public string Label => string.IsNullOrWhiteSpace(Key) ? "(unknown region)" : Key;
+
+    public string FullLabel => string.IsNullOrWhiteSpace(Key)
+        ? Parent.Label
+        : string.Format(CultureInfo.InvariantCulture, "{0}-{1}", Parent.Label, Label);
+
+    public ObservableCollection<MapNodeViewModel> Maps { get; }
+
+    public string DisplayName => Label;
+}
+
 internal sealed class MapNodeViewModel
 {
-    public MapNodeViewModel(MapEnemyOccurrences source)
+    public MapNodeViewModel(RegionNodeViewModel parent, MapEnemyOccurrences source)
     {
+        Parent = parent;
         Source = source;
         SpawnGroups = new ObservableCollection<SpawnGroupNodeViewModel>(source.SpawnGroups.Select(group => new SpawnGroupNodeViewModel(this, group)));
     }
+
+    public RegionNodeViewModel Parent { get; }
 
     public MapEnemyOccurrences Source { get; }
 
     public ObservableCollection<SpawnGroupNodeViewModel> SpawnGroups { get; }
 
-    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1})", Source.MapName, Source.RelativePath);
+    public string DisplayName => string.IsNullOrWhiteSpace(Source.MapName)
+        ? "(unknown map)"
+        : Source.MapName;
 }
 
 internal sealed class SpawnGroupNodeViewModel
@@ -530,7 +776,9 @@ internal sealed class SpawnGroupNodeViewModel
 
     public ObservableCollection<SpawnPointNodeViewModel> SpawnPoints { get; }
 
-    public string DisplayName => string.Format(CultureInfo.InvariantCulture, "{0} ({1} spawnpoint(s))", Source.SpawnName, Source.SpawnPoints.Count);
+    public string DisplayName => string.IsNullOrWhiteSpace(Source.SpawnName)
+        ? "(unnamed script)"
+        : Source.SpawnName;
 }
 
 internal sealed class SpawnPointNodeViewModel
