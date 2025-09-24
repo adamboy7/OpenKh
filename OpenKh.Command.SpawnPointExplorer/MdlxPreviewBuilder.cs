@@ -125,6 +125,9 @@ internal static class MdlxPreviewBuilder
         if (hasNormals.Any(hasNormal => !hasNormal))
         {
             var computedNormals = new Vector3D[vertexCount];
+            var fallbackNormals = new Vector3D[vertexCount];
+            var hasFallbackNormal = new bool[vertexCount];
+
             for (var i = 0; i <= triangleIndexList.Count - 3; i += 3)
             {
                 var i0 = triangleIndexList[i];
@@ -155,6 +158,13 @@ internal static class MdlxPreviewBuilder
                 computedNormals[i0] += faceNormal;
                 computedNormals[i1] += faceNormal;
                 computedNormals[i2] += faceNormal;
+
+                fallbackNormals[i0] = faceNormal;
+                fallbackNormals[i1] = faceNormal;
+                fallbackNormals[i2] = faceNormal;
+                hasFallbackNormal[i0] = true;
+                hasFallbackNormal[i1] = true;
+                hasFallbackNormal[i2] = true;
             }
 
             for (var index = 0; index < vertexCount; index++)
@@ -167,7 +177,12 @@ internal static class MdlxPreviewBuilder
                 var normal = computedNormals[index];
                 if (normal.LengthSquared <= double.Epsilon)
                 {
-                    continue;
+                    if (!hasFallbackNormal[index])
+                    {
+                        continue;
+                    }
+
+                    normal = fallbackNormals[index];
                 }
 
                 normal.Normalize();
