@@ -419,7 +419,7 @@ internal sealed class MainWindowViewModel : INotifyPropertyChanged
             return new PathSegments(string.Empty, string.Empty);
         }
 
-        var normalized = relativePath.Replace('\', '/');
+        var normalized = relativePath.Replace("\\", "/");
         var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var game = segments.Length > 0 ? segments[0] : string.Empty;
         var region = segments.Length > 1 ? segments[1] : string.Empty;
