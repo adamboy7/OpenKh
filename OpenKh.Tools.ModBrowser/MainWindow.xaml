@@ -1,0 +1,121 @@
+<Window x:Class="OpenKh.Tools.ModBrowser.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="KH Mod Browser" Height="600" Width="900" MinWidth="640" MinHeight="480"
+        Background="#121212" Foreground="White">
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="#1f1f1f" Padding="12">
+            <StackPanel Orientation="Horizontal">
+                <TextBox Width="400"
+                         Background="#2d2d2d"
+                         Foreground="White"
+                         BorderBrush="#3f3f3f"
+                         Margin="0,0,8,0"
+                         VerticalAlignment="Center"
+                         Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Search mods by name or tags like from:, created:, before:, updated:"/>
+                <ComboBox Width="200"
+                          ItemsSource="{Binding SortOptions}"
+                          DisplayMemberPath="DisplayName"
+                          SelectedValuePath="Option"
+                          SelectedValue="{Binding SelectedSortOption, Mode=TwoWay}"
+                          Background="#2d2d2d"
+                          Foreground="White"
+                          BorderBrush="#3f3f3f"
+                          VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+        <TabControl Background="Transparent" Foreground="White">
+            <TabItem Header="With Icons">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+                    <ItemsControl ItemsSource="{Binding ModsWithIconView}" Background="Transparent">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="72" Height="72" Background="#2d2d2d" CornerRadius="4">
+                                            <Image Source="{Binding IconUrl}" Stretch="UniformToFill"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
+                                                <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Without Icons">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+                    <ItemsControl ItemsSource="{Binding ModsWithoutIconView}" Background="Transparent">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="72" Height="72" Background="#2d2d2d" CornerRadius="4">
+                                            <TextBlock Text="No Icon" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="#a0a0a0"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
+                                                <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Other">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+                    <ItemsControl ItemsSource="{Binding ModsOtherView}" Background="Transparent">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="16"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Width="72" Height="72" Background="#2d2d2d" CornerRadius="4">
+                                            <TextBlock Text="Unknown" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="#a0a0a0"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
+                                                <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>
