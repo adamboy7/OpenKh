@@ -35,4 +35,7 @@ public class ModJsonEntry
 
     [JsonPropertyName("has_icon")]
     public bool? HasIcon { get; set; }
+
+    [JsonPropertyName("languages")]
+    public Dictionary<string, long>? Languages { get; set; }
 }
