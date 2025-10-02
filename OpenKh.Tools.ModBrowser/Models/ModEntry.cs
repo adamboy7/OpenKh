@@ -17,7 +17,8 @@ public class ModEntry
         DateTime? createdAt,
         DateTime? lastPush,
         string? iconUrl,
-        ModCategory category)
+        ModCategory category,
+        bool hasLua)
     {
         Repo = repo;
         Author = author;
@@ -25,6 +26,7 @@ public class ModEntry
         LastPush = lastPush;
         IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
         Category = category;
+        HasLua = hasLua;
     }
 
     public string Repo { get; }
@@ -40,6 +42,8 @@ public class ModEntry
     public string? IconUrl { get; }
 
     public ModCategory Category { get; }
+
+    public bool HasLua { get; }
 
     public string DisplayAuthor => string.IsNullOrWhiteSpace(Author) ? "Unknown author" : Author!;
 

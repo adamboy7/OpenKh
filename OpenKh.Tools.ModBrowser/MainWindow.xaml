@@ -3,6 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="KH Mod Browser" Height="600" Width="900" MinWidth="640" MinHeight="480"
         Background="#121212" Foreground="White">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+    </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#1f1f1f" Padding="12">
             <StackPanel Orientation="Horizontal">
@@ -50,6 +53,12 @@
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
                                             <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                                        Visibility="{Binding HasLua, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <Border Background="#2962ff" CornerRadius="4" Padding="6,2">
+                                                    <TextBlock Text="Lua" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
+                                                </Border>
+                                            </StackPanel>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
                                                 <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
@@ -80,6 +89,12 @@
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
                                             <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                                        Visibility="{Binding HasLua, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <Border Background="#2962ff" CornerRadius="4" Padding="6,2">
+                                                    <TextBlock Text="Lua" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
+                                                </Border>
+                                            </StackPanel>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
                                                 <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
@@ -110,6 +125,12 @@
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
                                             <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
+                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
+                                                        Visibility="{Binding HasLua, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <Border Background="#2962ff" CornerRadius="4" Padding="6,2">
+                                                    <TextBlock Text="Lua" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
+                                                </Border>
+                                            </StackPanel>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
                                                 <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>

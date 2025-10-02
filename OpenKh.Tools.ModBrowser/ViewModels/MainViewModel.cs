@@ -149,13 +149,15 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 var category = DetermineCategory(entry);
                 var iconUrl = ExtractIconUrl(entry);
+                var hasLua = HasLuaLanguage(entry);
                 _mods.Add(new ModEntry(
                     entry.Repo,
                     entry.Author,
                     entry.CreatedAt,
                     entry.LastPush,
                     iconUrl,
-                    category));
+                    category,
+                    hasLua));
             }
 
             RefreshViews();
@@ -232,6 +234,24 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         return null;
+    }
+
+    private static bool HasLuaLanguage(ModJsonEntry entry)
+    {
+        if (entry.Languages == null || entry.Languages.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var language in entry.Languages.Keys)
+        {
+            if (string.Equals(language, "Lua", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool MatchesSearch(ModEntry mod)
