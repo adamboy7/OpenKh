@@ -365,6 +365,11 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 AddBadgeIfMissing(badges, ModBadge.CreateHeavy());
             }
+
+            if (analysis.HasCopyExtensionMismatch)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateSpooky());
+            }
         }
 
         var badgeArray = badges.Count > 0 ? badges.ToArray() : Array.Empty<ModBadge>();
@@ -617,6 +622,7 @@ public class MainViewModel : INotifyPropertyChanged
             case YamlMappingNode mapping:
                 string? method = null;
                 string? name = null;
+                YamlNode? sourceNode = null;
 
                 foreach (var child in mapping.Children)
                 {
@@ -629,6 +635,10 @@ public class MainViewModel : INotifyPropertyChanged
                     else if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase))
                     {
                         name = (child.Value as YamlScalarNode)?.Value;
+                    }
+                    else if (string.Equals(key, "source", StringComparison.OrdinalIgnoreCase))
+                    {
+                        sourceNode = child.Value;
                     }
 
                     if (child.Value is YamlScalarNode scalarValue && ContainsRemasteredSegment(scalarValue.Value))
@@ -656,6 +666,12 @@ public class MainViewModel : INotifyPropertyChanged
                      name.EndsWith(".bar", StringComparison.OrdinalIgnoreCase)))
                 {
                     analysis.UsesHeavyCopy = true;
+                }
+
+                if (string.Equals(method, "copy", StringComparison.OrdinalIgnoreCase) &&
+                    HasCopyExtensionMismatch(name, sourceNode))
+                {
+                    analysis.HasCopyExtensionMismatch = true;
                 }
 
                 break;
@@ -768,6 +784,84 @@ public class MainViewModel : INotifyPropertyChanged
         return null;
     }
 
+    private static bool HasCopyExtensionMismatch(string? targetName, YamlNode? sourceNode)
+    {
+        if (string.IsNullOrWhiteSpace(targetName) || sourceNode == null)
+        {
+            return false;
+        }
+
+        var targetExtension = Path.GetExtension(targetName);
+        if (string.IsNullOrEmpty(targetExtension))
+        {
+            return false;
+        }
+
+        var sourceExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        CollectSourceExtensions(sourceNode, sourceExtensions);
+
+        if (sourceExtensions.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var extension in sourceExtensions)
+        {
+            if (!string.Equals(extension, targetExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void CollectSourceExtensions(YamlNode node, ISet<string> extensions)
+    {
+        switch (node)
+        {
+            case YamlScalarNode scalar:
+                AddExtensionIfPresent(scalar.Value, extensions);
+                break;
+            case YamlMappingNode mapping:
+                foreach (var child in mapping.Children)
+                {
+                    var key = (child.Key as YamlScalarNode)?.Value;
+                    if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(key, "from", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var value = (child.Value as YamlScalarNode)?.Value;
+                        AddExtensionIfPresent(value, extensions);
+                    }
+
+                    CollectSourceExtensions(child.Value, extensions);
+                }
+
+                break;
+            case YamlSequenceNode sequence:
+                foreach (var child in sequence)
+                {
+                    CollectSourceExtensions(child, extensions);
+                }
+
+                break;
+        }
+    }
+
+    private static void AddExtensionIfPresent(string? value, ISet<string> extensions)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var extension = Path.GetExtension(value);
+        if (!string.IsNullOrEmpty(extension))
+        {
+            extensions.Add(extension);
+        }
+    }
+
     private static bool ContainsRemasteredSegment(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -799,6 +893,7 @@ public class MainViewModel : INotifyPropertyChanged
         public bool TargetsRecom { get; set; }
         public bool WritesRemasteredAssets { get; set; }
         public bool UsesHeavyCopy { get; set; }
+        public bool HasCopyExtensionMismatch { get; set; }
     }
 
     private static HttpClient CreateHttpClient()

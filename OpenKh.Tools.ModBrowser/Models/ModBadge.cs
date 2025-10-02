@@ -42,4 +42,6 @@ public class ModBadge : IEquatable<ModBadge>
     public static ModBadge CreateBbs() => new("BBS", "#CD7F32", "White");
 
     public static ModBadge CreateRecom() => new("Re:CoM", "White", "Black");
+
+    public static ModBadge CreateSpooky() => new("Spooky", "#FF7043", "Black");
 }
