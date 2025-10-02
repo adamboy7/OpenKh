@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -38,6 +39,7 @@ public class MainViewModel : INotifyPropertyChanged
         ModsOtherView = CreateView(ModCategory.Other);
 
         LoadBadgesCommand = new RelayCommand<ModEntry>(entry => _ = LoadBadgesForEntryAsync(entry));
+        OpenInBrowserCommand = new RelayCommand<ModEntry>(OpenEntryInBrowser);
 
         SortOptions = new List<SortOptionInfo>
         {
@@ -60,6 +62,8 @@ public class MainViewModel : INotifyPropertyChanged
     public ICollectionView ModsOtherView { get; }
 
     public RelayCommand<ModEntry> LoadBadgesCommand { get; }
+
+    public RelayCommand<ModEntry> OpenInBrowserCommand { get; }
 
     public IReadOnlyList<SortOptionInfo> SortOptions { get; }
 
@@ -193,6 +197,48 @@ public class MainViewModel : INotifyPropertyChanged
         catch (Exception ex) when (ex is IOException || ex is JsonException)
         {
             // Swallow and keep list empty. In a real app we might log this.
+        }
+    }
+
+    private void OpenEntryInBrowser(ModEntry? entry)
+    {
+        if (entry == null)
+        {
+            return;
+        }
+
+        var repo = entry.Repo?.Trim();
+        if (string.IsNullOrEmpty(repo))
+        {
+            return;
+        }
+
+        if (!Uri.TryCreate(repo, UriKind.Absolute, out var uri))
+        {
+            var sanitized = repo;
+            if (sanitized.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase))
+            {
+                sanitized = sanitized["github.com/".Length..];
+            }
+
+            sanitized = sanitized.TrimStart('/');
+
+            if (!Uri.TryCreate($"https://github.com/{sanitized}", UriKind.Absolute, out uri))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(uri.ToString())
+            {
+                UseShellExecute = true
+            });
+        }
+        catch (Exception)
+        {
+            // Ignore failures when launching the browser.
         }
     }
 
