@@ -55,10 +55,10 @@
                 <Style TargetType="ListBoxItem">
                     <Setter Property="ContextMenu">
                         <Setter.Value>
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <ContextMenu>
                                 <MenuItem Header="View in browser"
-                                          Command="{Binding ViewInBrowserCommand}"
-                                          IsEnabled="{Binding HasBrowserUrl}"/>
+                                          Command="{Binding PlacementTarget.DataContext.ViewInBrowserCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          IsEnabled="{Binding PlacementTarget.DataContext.HasBrowserUrl, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                             </ContextMenu>
                         </Setter.Value>
                     </Setter>
@@ -68,10 +68,10 @@
                 <DataTemplate>
                     <Grid Height="64" Margin="3">
                         <Grid.ContextMenu>
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                            <ContextMenu>
                                 <MenuItem Header="View in browser"
-                                          Command="{Binding ViewInBrowserCommand}"
-                                          IsEnabled="{Binding HasBrowserUrl}"/>
+                                          Command="{Binding PlacementTarget.DataContext.ViewInBrowserCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                          IsEnabled="{Binding PlacementTarget.DataContext.HasBrowserUrl, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                             </ContextMenu>
                         </Grid.ContextMenu>
                         <Grid.ColumnDefinitions>
@@ -81,10 +81,10 @@
 
                         <CheckBox Grid.Column="0" VerticalAlignment="Center" VerticalContentAlignment="Center" IsChecked="{Binding Enabled}" Foreground="{Binding ColorTheme.TextColor}">
                             <CheckBox.ContextMenu>
-                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <ContextMenu>
                                     <MenuItem Header="View in browser"
-                                              Command="{Binding ViewInBrowserCommand}"
-                                              IsEnabled="{Binding HasBrowserUrl}"/>
+                                              Command="{Binding PlacementTarget.DataContext.ViewInBrowserCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                                              IsEnabled="{Binding PlacementTarget.DataContext.HasBrowserUrl, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
                                 </ContextMenu>
                             </CheckBox.ContextMenu>
                             <CheckBox.Content>
