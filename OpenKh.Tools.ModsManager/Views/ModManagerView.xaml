@@ -67,12 +67,26 @@
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Grid Height="64" Margin="3">
+                        <Grid.ContextMenu>
+                            <ContextMenu DataContext="{Binding}">
+                                <MenuItem Header="View in browser"
+                                          Command="{Binding ViewInBrowserCommand}"
+                                          IsEnabled="{Binding HasBrowserUrl}"/>
+                            </ContextMenu>
+                        </Grid.ContextMenu>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
 
                         <CheckBox Grid.Column="0" VerticalAlignment="Center" VerticalContentAlignment="Center" IsChecked="{Binding Enabled}" Foreground="{Binding ColorTheme.TextColor}">
+                            <CheckBox.ContextMenu>
+                                <ContextMenu DataContext="{Binding}">
+                                    <MenuItem Header="View in browser"
+                                              Command="{Binding ViewInBrowserCommand}"
+                                              IsEnabled="{Binding HasBrowserUrl}"/>
+                                </ContextMenu>
+                            </CheckBox.ContextMenu>
                             <CheckBox.Content>
                                 <Grid Margin="3 1 10 0">
                                     <Image Width="64" Height="64" Source="{Binding IconImage}"/>
