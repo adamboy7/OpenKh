@@ -64,7 +64,7 @@
                                         </Grid.ColumnDefinitions>
                                         <Button Width="72"
                                                 Height="72"
-                                                Command="{Binding DataContext.CheckLanguagesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                Command="{Binding DataContext.LoadBadgesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 Style="{StaticResource TransparentButtonStyle}">
                                             <Border Background="#2d2d2d" CornerRadius="4">
@@ -72,19 +72,35 @@
                                             </Border>
                                         </Button>
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                            <Button Command="{Binding DataContext.CheckLanguagesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            <Button Command="{Binding DataContext.LoadBadgesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource TransparentButtonStyle}"
                                                     HorizontalAlignment="Left">
                                                 <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
                                             </Button>
                                             <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
-                                                        Visibility="{Binding HasLua, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <Border Background="#2962ff" CornerRadius="4" Padding="6,2">
-                                                    <TextBlock Text="Lua" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
-                                                </Border>
-                                            </StackPanel>
+                                            <ItemsControl Margin="0,4,0,0"
+                                                          ItemsSource="{Binding Badges}"
+                                                          Visibility="{Binding HasBadges, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{Binding Background}"
+                                                                CornerRadius="4"
+                                                                Padding="6,2"
+                                                                Margin="0,0,6,0">
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       Foreground="{Binding Foreground}"
+                                                                       FontWeight="SemiBold"
+                                                                       FontSize="12"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
                                                 <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
@@ -111,7 +127,7 @@
                                         </Grid.ColumnDefinitions>
                                         <Button Width="72"
                                                 Height="72"
-                                                Command="{Binding DataContext.CheckLanguagesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                Command="{Binding DataContext.LoadBadgesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 Style="{StaticResource TransparentButtonStyle}">
                                             <Border Background="#2d2d2d" CornerRadius="4">
@@ -119,19 +135,35 @@
                                             </Border>
                                         </Button>
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                            <Button Command="{Binding DataContext.CheckLanguagesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            <Button Command="{Binding DataContext.LoadBadgesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource TransparentButtonStyle}"
                                                     HorizontalAlignment="Left">
                                                 <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
                                             </Button>
                                             <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
-                                                        Visibility="{Binding HasLua, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <Border Background="#2962ff" CornerRadius="4" Padding="6,2">
-                                                    <TextBlock Text="Lua" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
-                                                </Border>
-                                            </StackPanel>
+                                            <ItemsControl Margin="0,4,0,0"
+                                                          ItemsSource="{Binding Badges}"
+                                                          Visibility="{Binding HasBadges, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{Binding Background}"
+                                                                CornerRadius="4"
+                                                                Padding="6,2"
+                                                                Margin="0,0,6,0">
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       Foreground="{Binding Foreground}"
+                                                                       FontWeight="SemiBold"
+                                                                       FontSize="12"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
                                                 <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>
@@ -158,7 +190,7 @@
                                         </Grid.ColumnDefinitions>
                                         <Button Width="72"
                                                 Height="72"
-                                                Command="{Binding DataContext.CheckLanguagesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                Command="{Binding DataContext.LoadBadgesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 Style="{StaticResource TransparentButtonStyle}">
                                             <Border Background="#2d2d2d" CornerRadius="4">
@@ -191,19 +223,35 @@
                                             </Border>
                                         </Button>
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                                            <Button Command="{Binding DataContext.CheckLanguagesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            <Button Command="{Binding DataContext.LoadBadgesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                     CommandParameter="{Binding}"
                                                     Style="{StaticResource TransparentButtonStyle}"
                                                     HorizontalAlignment="Left">
                                                 <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" Foreground="White"/>
                                             </Button>
                                             <TextBlock Text="{Binding DisplayAuthor}" Foreground="#d0d0d0"/>
-                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0"
-                                                        Visibility="{Binding HasLua, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                                <Border Background="#2962ff" CornerRadius="4" Padding="6,2">
-                                                    <TextBlock Text="Lua" Foreground="White" FontWeight="SemiBold" FontSize="12"/>
-                                                </Border>
-                                            </StackPanel>
+                                            <ItemsControl Margin="0,4,0,0"
+                                                          ItemsSource="{Binding Badges}"
+                                                          Visibility="{Binding HasBadges, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{Binding Background}"
+                                                                CornerRadius="4"
+                                                                Padding="6,2"
+                                                                Margin="0,0,6,0">
+                                                            <TextBlock Text="{Binding Label}"
+                                                                       Foreground="{Binding Foreground}"
+                                                                       FontWeight="SemiBold"
+                                                                       FontSize="12"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
                                             <StackPanel Orientation="Horizontal">
                                                 <TextBlock Text="{Binding CreatedAtDisplay}" Foreground="#a0a0a0"/>
                                                 <TextBlock Text="{Binding LastUpdatedDisplay}" Foreground="#a0a0a0" Margin="12,0,0,0"/>

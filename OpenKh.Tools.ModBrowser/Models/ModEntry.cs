@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 
@@ -20,7 +21,7 @@ public class ModEntry : INotifyPropertyChanged
         DateTime? lastPush,
         string? iconUrl,
         ModCategory category,
-        bool hasLua)
+        string? modYmlUrl)
     {
         Repo = repo;
         Author = author;
@@ -28,7 +29,7 @@ public class ModEntry : INotifyPropertyChanged
         LastPush = lastPush;
         IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
         Category = category;
-        _hasLua = hasLua;
+        ModYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
     }
 
     public string Repo { get; }
@@ -47,37 +48,42 @@ public class ModEntry : INotifyPropertyChanged
 
     public ModCategory Category { get; }
 
-    private bool _hasLua;
+    public string? ModYmlUrl { get; }
 
-    public bool HasLua
+    private IReadOnlyList<ModBadge> _badges = Array.Empty<ModBadge>();
+
+    public IReadOnlyList<ModBadge> Badges
     {
-        get => _hasLua;
+        get => _badges;
         private set
         {
-            if (_hasLua == value)
+            if (ReferenceEquals(_badges, value))
             {
                 return;
             }
 
-            _hasLua = value;
-            OnPropertyChanged(nameof(HasLua));
+            _badges = value;
+            OnPropertyChanged(nameof(Badges));
+            OnPropertyChanged(nameof(HasBadges));
         }
     }
 
-    private bool _isCheckingLanguages;
+    public bool HasBadges => Badges.Count > 0;
 
-    public bool IsCheckingLanguages
+    private bool _isLoadingBadges;
+
+    public bool IsLoadingBadges
     {
-        get => _isCheckingLanguages;
+        get => _isLoadingBadges;
         private set
         {
-            if (_isCheckingLanguages == value)
+            if (_isLoadingBadges == value)
             {
                 return;
             }
 
-            _isCheckingLanguages = value;
-            OnPropertyChanged(nameof(IsCheckingLanguages));
+            _isLoadingBadges = value;
+            OnPropertyChanged(nameof(IsLoadingBadges));
         }
     }
 
@@ -93,9 +99,9 @@ public class ModEntry : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public void UpdateLuaUsage(bool hasLua) => HasLua = hasLua;
+    public void UpdateBadges(IReadOnlyList<ModBadge>? badges) => Badges = badges ?? Array.Empty<ModBadge>();
 
-    public void SetCheckingLanguages(bool isChecking) => IsCheckingLanguages = isChecking;
+    public void SetLoadingBadges(bool isLoading) => IsLoadingBadges = isLoading;
 
     private void OnPropertyChanged(string propertyName) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
