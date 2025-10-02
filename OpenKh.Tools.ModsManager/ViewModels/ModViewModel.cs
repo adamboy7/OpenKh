@@ -5,6 +5,7 @@ using OpenKh.Tools.ModsManager.Views;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -129,11 +130,25 @@ namespace OpenKh.Tools.ModsManager.ViewModels
                     return;
                 }
             });
+
+            ViewInBrowserCommand = new RelayCommand(_ =>
+            {
+                var url = GetBrowserUrl();
+                if (string.IsNullOrWhiteSpace(url))
+                    return;
+
+                Handle(() => Process.Start(new ProcessStartInfo(url)
+                {
+                    UseShellExecute = true
+                }));
+            }, _ => HasBrowserUrl);
         }
 
         public RelayCommand UpdateCommand { get; }
 
         public RelayCommand CollectionSettingsCommand { get; set; }
+
+        public RelayCommand ViewInBrowserCommand { get; }
 
         public bool Enabled
         {
@@ -178,6 +193,7 @@ namespace OpenKh.Tools.ModsManager.ViewModels
         public string AuthorUrl => $"https://github.com/{Author}";
         public string SourceUrl => $"https://github.com/{Source}";
         public string ReportBugUrl => $"https://github.com/{Source}/issues";
+        public bool HasBrowserUrl => IsHosted && Uri.TryCreate(GetBrowserUrl(), UriKind.Absolute, out _);
         public string FilesToPatch
         {
             get
@@ -203,6 +219,14 @@ namespace OpenKh.Tools.ModsManager.ViewModels
                 var project = System.IO.Path.GetFileName(Source);
                 return $"https://{author}.github.io/{project}";
             }
+        }
+
+        private string GetBrowserUrl()
+        {
+            if (!IsHosted)
+                return null;
+
+            return SourceUrl;
         }
 
         public int UpdateCount

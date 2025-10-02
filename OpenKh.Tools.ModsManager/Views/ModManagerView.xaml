@@ -51,6 +51,19 @@
             ItemsSource="{Binding ModsList}"
             SelectedValue="{Binding SelectedValue}" KeyUp="ListBox_KeyUp"
             HorizontalContentAlignment="Stretch">
+            <ListBox.ItemContainerStyle>
+                <Style TargetType="ListBoxItem">
+                    <Setter Property="ContextMenu">
+                        <Setter.Value>
+                            <ContextMenu>
+                                <MenuItem Header="View in browser"
+                                          Command="{Binding ViewInBrowserCommand}"
+                                          IsEnabled="{Binding HasBrowserUrl}"/>
+                            </ContextMenu>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>
                 <DataTemplate>
                     <Grid Height="64" Margin="3">
