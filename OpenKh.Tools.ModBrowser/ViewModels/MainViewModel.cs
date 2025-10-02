@@ -308,12 +308,44 @@ public class MainViewModel : INotifyPropertyChanged
 
     private static ModCategory DetermineCategory(ModJsonEntry entry)
     {
-        if (entry.HasIcon.HasValue)
+        if (!HasModYml(entry))
         {
-            return entry.HasIcon.Value ? ModCategory.WithIcon : ModCategory.WithoutIcon;
+            return ModCategory.Other;
         }
 
-        return ModCategory.Other;
+        return HasIcon(entry) ? ModCategory.WithIcon : ModCategory.WithoutIcon;
+    }
+
+    private static bool HasModYml(ModJsonEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ModYmlUrl))
+        {
+            return true;
+        }
+
+        if (entry.Matches != null &&
+            entry.Matches.TryGetValue("mod.yml", out var modYmlMatch))
+        {
+            return modYmlMatch.Exists;
+        }
+
+        return false;
+    }
+
+    private static bool HasIcon(ModJsonEntry entry)
+    {
+        if (entry.HasIcon.HasValue)
+        {
+            return entry.HasIcon.Value;
+        }
+
+        if (entry.Matches != null &&
+            entry.Matches.TryGetValue("icon.png", out var iconMatch))
+        {
+            return iconMatch.Exists;
+        }
+
+        return ExtractIconUrl(entry) != null;
     }
 
     private static string? ExtractIconUrl(ModJsonEntry entry)
