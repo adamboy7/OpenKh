@@ -55,7 +55,7 @@
                 <Style TargetType="ListBoxItem">
                     <Setter Property="ContextMenu">
                         <Setter.Value>
-                            <ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem Header="View in browser"
                                           Command="{Binding ViewInBrowserCommand}"
                                           IsEnabled="{Binding HasBrowserUrl}"/>
