@@ -43,6 +43,8 @@ public class ModEntry : INotifyPropertyChanged
 
     public string? IconUrl { get; }
 
+    public bool HasIcon => !string.IsNullOrWhiteSpace(IconUrl);
+
     public ModCategory Category { get; }
 
     private bool _hasLua;

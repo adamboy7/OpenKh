@@ -308,22 +308,72 @@ public class MainViewModel : INotifyPropertyChanged
 
     private static ModCategory DetermineCategory(ModJsonEntry entry)
     {
-        if (entry.HasIcon.HasValue)
+        if (!HasModYml(entry))
         {
-            return entry.HasIcon.Value ? ModCategory.WithIcon : ModCategory.WithoutIcon;
+            return ModCategory.Other;
         }
 
-        return ModCategory.Other;
+        return HasIcon(entry) ? ModCategory.WithIcon : ModCategory.WithoutIcon;
+    }
+
+    private static bool HasModYml(ModJsonEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ModYmlUrl))
+        {
+            return true;
+        }
+
+        if (entry.Matches != null &&
+            entry.Matches.TryGetValue("mod.yml", out var modYmlMatch))
+        {
+            return modYmlMatch.Exists;
+        }
+
+        return false;
+    }
+
+    private static bool HasIcon(ModJsonEntry entry)
+    {
+        if (entry.HasIcon.HasValue)
+        {
+            return entry.HasIcon.Value;
+        }
+
+        if (entry.Matches != null &&
+            entry.Matches.TryGetValue("icon.png", out var iconMatch))
+        {
+            return iconMatch.Exists;
+        }
+
+        return ExtractIconUrl(entry) != null;
     }
 
     private static string? ExtractIconUrl(ModJsonEntry entry)
     {
         if (entry.Matches != null && entry.Matches.TryGetValue("icon.png", out var iconMatch) && iconMatch.Exists)
         {
-            return string.IsNullOrWhiteSpace(iconMatch.Url) ? null : iconMatch.Url;
+            if (!string.IsNullOrWhiteSpace(iconMatch.Url))
+            {
+                return iconMatch.Url;
+            }
+        }
+
+        if (entry.HasIcon == true)
+        {
+            return BuildRawGitHubUrl(entry.Repo, "icon.png");
         }
 
         return null;
+    }
+
+    private static string? BuildRawGitHubUrl(string? repo, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(relativePath))
+        {
+            return null;
+        }
+
+        return $"https://raw.githubusercontent.com/{repo}/HEAD/{relativePath}";
     }
 
     private static bool HasLuaLanguage(ModJsonEntry entry)
