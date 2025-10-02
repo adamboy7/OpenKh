@@ -13,17 +13,23 @@ using System.Threading.Tasks;
 using System.Windows.Data;
 using OpenKh.Tools.Common.Wpf;
 using OpenKh.Tools.ModBrowser.Models;
+using YamlDotNet.Core;
+using YamlDotNet.RepresentationModel;
 
 namespace OpenKh.Tools.ModBrowser.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<ModEntry> _mods = new();
-    private readonly Dictionary<string, bool> _languageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IReadOnlyList<ModBadge>> _badgeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ModJsonEntry> _modJsonEntries = new();
+    private readonly Dictionary<string, ModJsonEntry> _modJsonEntryMap = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _modsFileLock = new(1, 1);
     private readonly HttpClient _httpClient = CreateHttpClient();
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
+    private string? _modsFilePath;
 
     public MainViewModel()
     {
@@ -31,7 +37,7 @@ public class MainViewModel : INotifyPropertyChanged
         ModsWithoutIconView = CreateView(ModCategory.WithoutIcon);
         ModsOtherView = CreateView(ModCategory.Other);
 
-        CheckLanguagesCommand = new RelayCommand<ModEntry>(entry => _ = LoadLanguagesForEntryAsync(entry));
+        LoadBadgesCommand = new RelayCommand<ModEntry>(entry => _ = LoadBadgesForEntryAsync(entry));
 
         SortOptions = new List<SortOptionInfo>
         {
@@ -53,7 +59,7 @@ public class MainViewModel : INotifyPropertyChanged
 
     public ICollectionView ModsOtherView { get; }
 
-    public RelayCommand<ModEntry> CheckLanguagesCommand { get; }
+    public RelayCommand<ModEntry> LoadBadgesCommand { get; }
 
     public IReadOnlyList<SortOptionInfo> SortOptions { get; }
 
@@ -145,6 +151,8 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        _modsFilePath = modsFilePath;
+
         try
         {
             var json = File.ReadAllText(modsFilePath);
@@ -155,12 +163,20 @@ public class MainViewModel : INotifyPropertyChanged
             var entries = JsonSerializer.Deserialize<List<ModJsonEntry>>(json, options) ?? new List<ModJsonEntry>();
 
             _mods.Clear();
-            _languageCache.Clear();
+            _badgeCache.Clear();
+            _modJsonEntries.Clear();
+            _modJsonEntryMap.Clear();
             foreach (var entry in entries)
             {
+                _modJsonEntries.Add(entry);
+                if (!string.IsNullOrWhiteSpace(entry.Repo))
+                {
+                    _modJsonEntryMap[entry.Repo] = entry;
+                }
+
                 var category = DetermineCategory(entry);
                 var iconUrl = ExtractIconUrl(entry);
-                var hasLua = HasLuaLanguage(entry);
+                var modYmlUrl = ExtractModYmlUrl(entry);
                 _mods.Add(new ModEntry(
                     entry.Repo,
                     entry.Author,
@@ -168,7 +184,7 @@ public class MainViewModel : INotifyPropertyChanged
                     entry.LastPush,
                     iconUrl,
                     category,
-                    hasLua));
+                    modYmlUrl));
 
             }
 
@@ -180,34 +196,35 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task LoadLanguagesForEntryAsync(ModEntry? entry, CancellationToken cancellationToken = default)
+    private async Task LoadBadgesForEntryAsync(ModEntry? entry, CancellationToken cancellationToken = default)
     {
         if (entry == null)
         {
             return;
         }
 
-        if (_languageCache.TryGetValue(entry.Repo, out var cached))
+        if (_badgeCache.TryGetValue(entry.Repo, out var cached))
         {
-            entry.UpdateLuaUsage(cached);
+            entry.UpdateBadges(cached);
             return;
         }
 
-        if (entry.IsCheckingLanguages)
+        if (entry.IsLoadingBadges)
         {
             return;
         }
 
         try
         {
-            entry.SetCheckingLanguages(true);
-            var hasLua = await QueryRepositoryLanguagesAsync(entry.Repo, cancellationToken);
-            _languageCache[entry.Repo] = hasLua;
-            entry.UpdateLuaUsage(hasLua);
+            entry.SetLoadingBadges(true);
+            var result = await QueryBadgesAsync(entry, cancellationToken);
+            _badgeCache[entry.Repo] = result.Badges;
+            entry.UpdateBadges(result.Badges);
+            await ApplyMetadataUpdatesAsync(entry, result.CreatedAt, result.LastPush, cancellationToken);
         }
         catch (HttpRequestException)
         {
-            // Ignore connectivity issues; we simply leave the badge hidden.
+            // Ignore connectivity issues; badges will remain hidden.
         }
         catch (TaskCanceledException)
         {
@@ -217,34 +234,452 @@ public class MainViewModel : INotifyPropertyChanged
         {
             // Ignore malformed responses.
         }
+        catch (YamlException)
+        {
+            // Ignore malformed YAML payloads.
+        }
         finally
         {
-            entry.SetCheckingLanguages(false);
+            entry.SetLoadingBadges(false);
         }
     }
 
-    private async Task<bool> QueryRepositoryLanguagesAsync(string repo, CancellationToken cancellationToken)
+    private async Task<BadgeQueryResult> QueryBadgesAsync(ModEntry entry, CancellationToken cancellationToken)
+    {
+        var badges = new List<ModBadge>();
+        DateTime? createdAt = null;
+        DateTime? lastPush = null;
+
+        var languageMetadata = await FetchRepositoryLanguageMetadataAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+        if (languageMetadata != null)
+        {
+            if (languageMetadata.HasLua)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateLua());
+            }
+
+            createdAt = languageMetadata.CreatedAt;
+            lastPush = languageMetadata.LastPush;
+        }
+
+        var treePaths = await FetchRepositoryTreeAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+        if (treePaths.Count > 0)
+        {
+            if (ContainsLuaFiles(treePaths))
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateLua());
+            }
+
+            if (ContainsRemasteredEntries(treePaths))
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateHd());
+            }
+        }
+
+        var modYamlContent = await FetchModYamlAsync(entry, cancellationToken).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(modYamlContent))
+        {
+            var analysis = AnalyzeModYaml(modYamlContent);
+            if (analysis.TargetsPc)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreatePc());
+            }
+
+            if (analysis.TargetsPs2)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreatePs2());
+            }
+
+            if (analysis.WritesRemasteredAssets)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateHd());
+            }
+
+            if (analysis.UsesHeavyCopy)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateHeavy());
+            }
+        }
+
+        var badgeArray = badges.Count > 0 ? badges.ToArray() : Array.Empty<ModBadge>();
+        return new BadgeQueryResult(badgeArray, createdAt, lastPush);
+    }
+
+    private async Task<RepositoryLanguageMetadata?> FetchRepositoryLanguageMetadataAsync(string repo, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(repo) || !repo.Contains('/'))
         {
-            return false;
+            return null;
         }
 
-        using var response = await _httpClient.GetAsync($"https://api.github.com/repos/{repo}/languages", cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        var hasLua = false;
+
+        using (var response = await _httpClient
+            .GetAsync($"https://api.github.com/repos/{repo}/languages", cancellationToken)
+            .ConfigureAwait(false))
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, "Lua", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasLua = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        DateTime? createdAt = null;
+        DateTime? lastPush = null;
+
+        using (var response = await _httpClient
+            .GetAsync($"https://api.github.com/repos/{repo}", cancellationToken)
+            .ConfigureAwait(false))
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var root = document.RootElement;
+
+                if (root.TryGetProperty("created_at", out var createdAtElement) && createdAtElement.ValueKind == JsonValueKind.String)
+                {
+                    createdAt = ParseGitHubDate(createdAtElement.GetString());
+                }
+
+                if (root.TryGetProperty("pushed_at", out var pushedAtElement) && pushedAtElement.ValueKind == JsonValueKind.String)
+                {
+                    lastPush = ParseGitHubDate(pushedAtElement.GetString());
+                }
+            }
+        }
+
+        return new RepositoryLanguageMetadata(hasLua, createdAt, lastPush);
+    }
+
+    private async Task<List<string>> FetchRepositoryTreeAsync(string repo, CancellationToken cancellationToken)
+    {
+        var paths = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(repo) || !repo.Contains('/'))
+        {
+            return paths;
+        }
+
+        using var response = await _httpClient
+            .GetAsync($"https://api.github.com/repos/{repo}/git/trees/HEAD?recursive=1", cancellationToken)
+            .ConfigureAwait(false);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return paths;
+        }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        foreach (var property in document.RootElement.EnumerateObject())
+        if (!document.RootElement.TryGetProperty("tree", out var treeElement))
         {
-            if (string.Equals(property.Name, "Lua", StringComparison.OrdinalIgnoreCase))
+            return paths;
+        }
+
+        foreach (var item in treeElement.EnumerateArray())
+        {
+            if (!item.TryGetProperty("path", out var pathElement))
             {
-                return true;
+                continue;
+            }
+
+            var path = pathElement.GetString();
+            if (!string.IsNullOrWhiteSpace(path))
+            {
+                paths.Add(path);
             }
         }
 
-        return false;
+        return paths;
+    }
+
+    private async Task<string?> FetchModYamlAsync(ModEntry entry, CancellationToken cancellationToken)
+    {
+        var urls = new List<string>();
+        if (!string.IsNullOrWhiteSpace(entry.ModYmlUrl))
+        {
+            urls.Add(entry.ModYmlUrl);
+        }
+
+        var fallback = BuildRawGitHubUrl(entry.Repo, "mod.yml");
+        if (!string.IsNullOrWhiteSpace(fallback))
+        {
+            urls.Add(fallback);
+        }
+
+        foreach (var url in urls.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            using var response = await _httpClient.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                continue;
+            }
+
+            return await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        return null;
+    }
+
+    private Task ApplyMetadataUpdatesAsync(ModEntry entry, DateTime? createdAt, DateTime? lastPush, CancellationToken cancellationToken)
+    {
+        if (createdAt == null && lastPush == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var changed = entry.UpdateDates(createdAt, lastPush);
+        if (!changed)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_modJsonEntryMap.TryGetValue(entry.Repo, out var jsonEntry))
+        {
+            jsonEntry.CreatedAt = entry.CreatedAt;
+            jsonEntry.LastPush = entry.LastPush;
+            return PersistModsJsonAsync(cancellationToken);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task PersistModsJsonAsync(CancellationToken cancellationToken)
+    {
+        if (_modsFilePath == null || _modJsonEntries.Count == 0)
+        {
+            return;
+        }
+
+        await _modsFileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true
+            };
+
+            await using var stream = new FileStream(
+                _modsFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                useAsync: true);
+
+            await JsonSerializer.SerializeAsync(stream, _modJsonEntries, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IOException)
+        {
+            // Ignore failures while attempting to sync metadata locally.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Ignore permission issues during background persistence.
+        }
+        catch (NotSupportedException)
+        {
+            // Ignore unsupported file scenarios.
+        }
+        catch (JsonException)
+        {
+            // Ignore serialization errors; the UI still reflects the updated data.
+        }
+        finally
+        {
+            _modsFileLock.Release();
+        }
+    }
+
+    private static bool ContainsLuaFiles(IEnumerable<string> paths) =>
+        paths.Any(path =>
+            path.EndsWith(".lua", StringComparison.OrdinalIgnoreCase) ||
+            path.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+                .Any(segment => string.Equals(segment, "lua", StringComparison.OrdinalIgnoreCase)));
+
+    private static bool ContainsRemasteredEntries(IEnumerable<string> paths) =>
+        paths.Any(path => path.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries)
+            .Any(segment => string.Equals(segment, "remastered", StringComparison.OrdinalIgnoreCase)));
+
+    private static void AddBadgeIfMissing(List<ModBadge> badges, ModBadge badge)
+    {
+        if (badges.Any(existing => existing.Equals(badge)))
+        {
+            return;
+        }
+
+        badges.Add(badge);
+    }
+
+    private static ModYamlAnalysis AnalyzeModYaml(string yaml)
+    {
+        var analysis = new ModYamlAnalysis();
+
+        var yamlStream = new YamlStream();
+        using var reader = new StringReader(yaml);
+        yamlStream.Load(reader);
+
+        if (yamlStream.Documents.Count == 0)
+        {
+            return analysis;
+        }
+
+        var root = yamlStream.Documents[0].RootNode;
+        if (root != null)
+        {
+            AnalyzeYamlNode(root, analysis);
+        }
+
+        return analysis;
+    }
+
+    private static void AnalyzeYamlNode(YamlNode node, ModYamlAnalysis analysis)
+    {
+        switch (node)
+        {
+            case YamlMappingNode mapping:
+                string? method = null;
+                string? name = null;
+
+                foreach (var child in mapping.Children)
+                {
+                    var key = (child.Key as YamlScalarNode)?.Value;
+
+                    if (string.Equals(key, "method", StringComparison.OrdinalIgnoreCase))
+                    {
+                        method = (child.Value as YamlScalarNode)?.Value;
+                    }
+                    else if (string.Equals(key, "name", StringComparison.OrdinalIgnoreCase))
+                    {
+                        name = (child.Value as YamlScalarNode)?.Value;
+                    }
+
+                    if (child.Value is YamlScalarNode scalarValue && ContainsRemasteredSegment(scalarValue.Value))
+                    {
+                        analysis.WritesRemasteredAssets = true;
+                    }
+
+                    if (string.Equals(key, "platform", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(key, "platforms", StringComparison.OrdinalIgnoreCase))
+                    {
+                        CollectPlatformInfo(child.Value, analysis);
+                    }
+
+                    AnalyzeYamlNode(child.Value, analysis);
+                }
+
+                if (string.Equals(method, "copy", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(name) &&
+                    (name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase) ||
+                     name.EndsWith(".bar", StringComparison.OrdinalIgnoreCase)))
+                {
+                    analysis.UsesHeavyCopy = true;
+                }
+
+                break;
+            case YamlSequenceNode sequence:
+                foreach (var child in sequence)
+                {
+                    AnalyzeYamlNode(child, analysis);
+                }
+
+                break;
+        }
+    }
+
+    private static void CollectPlatformInfo(YamlNode node, ModYamlAnalysis analysis)
+    {
+        switch (node)
+        {
+            case YamlScalarNode scalar:
+                UpdatePlatformFlags(scalar.Value, analysis);
+                break;
+            case YamlSequenceNode sequence:
+                foreach (var child in sequence)
+                {
+                    CollectPlatformInfo(child, analysis);
+                }
+
+                break;
+        }
+    }
+
+    private static void UpdatePlatformFlags(string? value, ModYamlAnalysis analysis)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var normalized = value.Trim();
+        if (string.Equals(normalized, "pc", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.TargetsPc = true;
+        }
+        else if (string.Equals(normalized, "ps2", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.TargetsPs2 = true;
+        }
+    }
+
+    private static DateTime? ParseGitHubDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var result))
+        {
+            return result;
+        }
+
+        if (DateTime.TryParse(value, out result))
+        {
+            return result;
+        }
+
+        return null;
+    }
+
+    private static bool ContainsRemasteredSegment(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var normalized = value.Trim();
+        if (!normalized.Contains('/') && !normalized.Contains('\\'))
+        {
+            return string.Equals(normalized, "remastered", StringComparison.OrdinalIgnoreCase);
+        }
+
+        var segments = normalized.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+        return segments.Any(segment => string.Equals(segment, "remastered", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed record BadgeQueryResult(IReadOnlyList<ModBadge> Badges, DateTime? CreatedAt, DateTime? LastPush);
+
+    private sealed record RepositoryLanguageMetadata(bool HasLua, DateTime? CreatedAt, DateTime? LastPush);
+
+    private sealed class ModYamlAnalysis
+    {
+        public bool TargetsPc { get; set; }
+        public bool TargetsPs2 { get; set; }
+        public bool WritesRemasteredAssets { get; set; }
+        public bool UsesHeavyCopy { get; set; }
     }
 
     private static HttpClient CreateHttpClient()
@@ -366,6 +801,24 @@ public class MainViewModel : INotifyPropertyChanged
         return null;
     }
 
+    private static string? ExtractModYmlUrl(ModJsonEntry entry)
+    {
+        if (!string.IsNullOrWhiteSpace(entry.ModYmlUrl))
+        {
+            return entry.ModYmlUrl;
+        }
+
+        if (entry.Matches != null &&
+            entry.Matches.TryGetValue("mod.yml", out var modYmlMatch) &&
+            modYmlMatch.Exists &&
+            !string.IsNullOrWhiteSpace(modYmlMatch.Url))
+        {
+            return modYmlMatch.Url;
+        }
+
+        return null;
+    }
+
     private static string? BuildRawGitHubUrl(string? repo, string relativePath)
     {
         if (string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(relativePath))
@@ -374,24 +827,6 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         return $"https://raw.githubusercontent.com/{repo}/HEAD/{relativePath}";
-    }
-
-    private static bool HasLuaLanguage(ModJsonEntry entry)
-    {
-        if (entry.Languages == null || entry.Languages.Count == 0)
-        {
-            return false;
-        }
-
-        foreach (var language in entry.Languages.Keys)
-        {
-            if (string.Equals(language, "Lua", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private bool MatchesSearch(ModEntry mod)

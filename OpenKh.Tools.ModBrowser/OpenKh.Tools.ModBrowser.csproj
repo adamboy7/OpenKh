@@ -9,5 +9,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpenKh.Tools.Common.Wpf\OpenKh.Tools.Common.Wpf.csproj" />
+    <PackageReference Include="YamlDotNet" Version="15.3.0" />
   </ItemGroup>
 </Project>

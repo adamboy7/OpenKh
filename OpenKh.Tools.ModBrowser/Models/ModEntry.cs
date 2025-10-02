@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Globalization;
 
@@ -13,6 +14,9 @@ public enum ModCategory
 
 public class ModEntry : INotifyPropertyChanged
 {
+    private DateTime? _createdAt;
+    private DateTime? _lastPush;
+
     public ModEntry(
         string repo,
         string? author,
@@ -20,15 +24,15 @@ public class ModEntry : INotifyPropertyChanged
         DateTime? lastPush,
         string? iconUrl,
         ModCategory category,
-        bool hasLua)
+        string? modYmlUrl)
     {
         Repo = repo;
         Author = author;
-        CreatedAt = createdAt;
-        LastPush = lastPush;
+        _createdAt = createdAt;
+        _lastPush = lastPush;
         IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
         Category = category;
-        _hasLua = hasLua;
+        ModYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
     }
 
     public string Repo { get; }
@@ -37,9 +41,37 @@ public class ModEntry : INotifyPropertyChanged
 
     public string? Author { get; }
 
-    public DateTime? CreatedAt { get; }
+    public DateTime? CreatedAt
+    {
+        get => _createdAt;
+        private set
+        {
+            if (Nullable.Equals(_createdAt, value))
+            {
+                return;
+            }
 
-    public DateTime? LastPush { get; }
+            _createdAt = value;
+            OnPropertyChanged(nameof(CreatedAt));
+            OnPropertyChanged(nameof(CreatedAtDisplay));
+        }
+    }
+
+    public DateTime? LastPush
+    {
+        get => _lastPush;
+        private set
+        {
+            if (Nullable.Equals(_lastPush, value))
+            {
+                return;
+            }
+
+            _lastPush = value;
+            OnPropertyChanged(nameof(LastPush));
+            OnPropertyChanged(nameof(LastUpdatedDisplay));
+        }
+    }
 
     public string? IconUrl { get; }
 
@@ -47,55 +79,79 @@ public class ModEntry : INotifyPropertyChanged
 
     public ModCategory Category { get; }
 
-    private bool _hasLua;
+    public string? ModYmlUrl { get; }
 
-    public bool HasLua
+    private IReadOnlyList<ModBadge> _badges = Array.Empty<ModBadge>();
+
+    public IReadOnlyList<ModBadge> Badges
     {
-        get => _hasLua;
+        get => _badges;
         private set
         {
-            if (_hasLua == value)
+            if (ReferenceEquals(_badges, value))
             {
                 return;
             }
 
-            _hasLua = value;
-            OnPropertyChanged(nameof(HasLua));
+            _badges = value;
+            OnPropertyChanged(nameof(Badges));
+            OnPropertyChanged(nameof(HasBadges));
         }
     }
 
-    private bool _isCheckingLanguages;
+    public bool HasBadges => Badges.Count > 0;
 
-    public bool IsCheckingLanguages
+    private bool _isLoadingBadges;
+
+    public bool IsLoadingBadges
     {
-        get => _isCheckingLanguages;
+        get => _isLoadingBadges;
         private set
         {
-            if (_isCheckingLanguages == value)
+            if (_isLoadingBadges == value)
             {
                 return;
             }
 
-            _isCheckingLanguages = value;
-            OnPropertyChanged(nameof(IsCheckingLanguages));
+            _isLoadingBadges = value;
+            OnPropertyChanged(nameof(IsLoadingBadges));
         }
     }
 
     public string DisplayAuthor => string.IsNullOrWhiteSpace(Author) ? "Unknown author" : Author!;
 
-    public string CreatedAtDisplay => CreatedAt.HasValue
-        ? $"Created: {CreatedAt.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
-        : "Created: Unknown";
+    public string CreatedAtDisplay => FormatDate("Created", CreatedAt);
 
-    public string LastUpdatedDisplay => LastPush.HasValue
-        ? $"Updated: {LastPush.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
-        : "Updated: Unknown";
+    public string LastUpdatedDisplay => FormatDate("Updated", LastPush);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public void UpdateLuaUsage(bool hasLua) => HasLua = hasLua;
+    public bool UpdateDates(DateTime? createdAt, DateTime? lastPush)
+    {
+        var changed = false;
 
-    public void SetCheckingLanguages(bool isChecking) => IsCheckingLanguages = isChecking;
+        if (!Nullable.Equals(CreatedAt, createdAt))
+        {
+            CreatedAt = createdAt;
+            changed = true;
+        }
+
+        if (!Nullable.Equals(LastPush, lastPush))
+        {
+            LastPush = lastPush;
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    public void UpdateBadges(IReadOnlyList<ModBadge>? badges) => Badges = badges ?? Array.Empty<ModBadge>();
+
+    public void SetLoadingBadges(bool isLoading) => IsLoadingBadges = isLoading;
+
+    private static string FormatDate(string prefix, DateTime? value) => value.HasValue
+        ? $"{prefix}: {value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
+        : $"{prefix}: Unknown";
 
     private void OnPropertyChanged(string propertyName) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
