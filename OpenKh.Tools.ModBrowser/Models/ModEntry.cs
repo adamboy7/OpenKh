@@ -14,6 +14,9 @@ public enum ModCategory
 
 public class ModEntry : INotifyPropertyChanged
 {
+    private DateTime? _createdAt;
+    private DateTime? _lastPush;
+
     public ModEntry(
         string repo,
         string? author,
@@ -25,8 +28,8 @@ public class ModEntry : INotifyPropertyChanged
     {
         Repo = repo;
         Author = author;
-        CreatedAt = createdAt;
-        LastPush = lastPush;
+        _createdAt = createdAt;
+        _lastPush = lastPush;
         IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
         Category = category;
         ModYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
@@ -38,9 +41,37 @@ public class ModEntry : INotifyPropertyChanged
 
     public string? Author { get; }
 
-    public DateTime? CreatedAt { get; }
+    public DateTime? CreatedAt
+    {
+        get => _createdAt;
+        private set
+        {
+            if (Nullable.Equals(_createdAt, value))
+            {
+                return;
+            }
 
-    public DateTime? LastPush { get; }
+            _createdAt = value;
+            OnPropertyChanged(nameof(CreatedAt));
+            OnPropertyChanged(nameof(CreatedAtDisplay));
+        }
+    }
+
+    public DateTime? LastPush
+    {
+        get => _lastPush;
+        private set
+        {
+            if (Nullable.Equals(_lastPush, value))
+            {
+                return;
+            }
+
+            _lastPush = value;
+            OnPropertyChanged(nameof(LastPush));
+            OnPropertyChanged(nameof(LastUpdatedDisplay));
+        }
+    }
 
     public string? IconUrl { get; }
 
@@ -89,19 +120,38 @@ public class ModEntry : INotifyPropertyChanged
 
     public string DisplayAuthor => string.IsNullOrWhiteSpace(Author) ? "Unknown author" : Author!;
 
-    public string CreatedAtDisplay => CreatedAt.HasValue
-        ? $"Created: {CreatedAt.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
-        : "Created: Unknown";
+    public string CreatedAtDisplay => FormatDate("Created", CreatedAt);
 
-    public string LastUpdatedDisplay => LastPush.HasValue
-        ? $"Updated: {LastPush.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
-        : "Updated: Unknown";
+    public string LastUpdatedDisplay => FormatDate("Updated", LastPush);
 
     public event PropertyChangedEventHandler? PropertyChanged;
+
+    public bool UpdateDates(DateTime? createdAt, DateTime? lastPush)
+    {
+        var changed = false;
+
+        if (!Nullable.Equals(CreatedAt, createdAt))
+        {
+            CreatedAt = createdAt;
+            changed = true;
+        }
+
+        if (!Nullable.Equals(LastPush, lastPush))
+        {
+            LastPush = lastPush;
+            changed = true;
+        }
+
+        return changed;
+    }
 
     public void UpdateBadges(IReadOnlyList<ModBadge>? badges) => Badges = badges ?? Array.Empty<ModBadge>();
 
     public void SetLoadingBadges(bool isLoading) => IsLoadingBadges = isLoading;
+
+    private static string FormatDate(string prefix, DateTime? value) => value.HasValue
+        ? $"{prefix}: {value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"
+        : $"{prefix}: Unknown";
 
     private void OnPropertyChanged(string propertyName) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

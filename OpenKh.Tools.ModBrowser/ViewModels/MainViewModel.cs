@@ -22,10 +22,14 @@ public class MainViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<ModEntry> _mods = new();
     private readonly Dictionary<string, IReadOnlyList<ModBadge>> _badgeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<ModJsonEntry> _modJsonEntries = new();
+    private readonly Dictionary<string, ModJsonEntry> _modJsonEntryMap = new(StringComparer.OrdinalIgnoreCase);
+    private readonly SemaphoreSlim _modsFileLock = new(1, 1);
     private readonly HttpClient _httpClient = CreateHttpClient();
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
+    private string? _modsFilePath;
 
     public MainViewModel()
     {
@@ -147,6 +151,8 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        _modsFilePath = modsFilePath;
+
         try
         {
             var json = File.ReadAllText(modsFilePath);
@@ -158,8 +164,16 @@ public class MainViewModel : INotifyPropertyChanged
 
             _mods.Clear();
             _badgeCache.Clear();
+            _modJsonEntries.Clear();
+            _modJsonEntryMap.Clear();
             foreach (var entry in entries)
             {
+                _modJsonEntries.Add(entry);
+                if (!string.IsNullOrWhiteSpace(entry.Repo))
+                {
+                    _modJsonEntryMap[entry.Repo] = entry;
+                }
+
                 var category = DetermineCategory(entry);
                 var iconUrl = ExtractIconUrl(entry);
                 var modYmlUrl = ExtractModYmlUrl(entry);
@@ -203,9 +217,10 @@ public class MainViewModel : INotifyPropertyChanged
         try
         {
             entry.SetLoadingBadges(true);
-            var badges = await QueryBadgesAsync(entry, cancellationToken).ConfigureAwait(false);
-            _badgeCache[entry.Repo] = badges;
-            entry.UpdateBadges(badges);
+            var result = await QueryBadgesAsync(entry, cancellationToken);
+            _badgeCache[entry.Repo] = result.Badges;
+            entry.UpdateBadges(result.Badges);
+            await ApplyMetadataUpdatesAsync(entry, result.CreatedAt, result.LastPush, cancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -229,9 +244,23 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private async Task<IReadOnlyList<ModBadge>> QueryBadgesAsync(ModEntry entry, CancellationToken cancellationToken)
+    private async Task<BadgeQueryResult> QueryBadgesAsync(ModEntry entry, CancellationToken cancellationToken)
     {
         var badges = new List<ModBadge>();
+        DateTime? createdAt = null;
+        DateTime? lastPush = null;
+
+        var languageMetadata = await FetchRepositoryLanguageMetadataAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+        if (languageMetadata != null)
+        {
+            if (languageMetadata.HasLua)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateLua());
+            }
+
+            createdAt = languageMetadata.CreatedAt;
+            lastPush = languageMetadata.LastPush;
+        }
 
         var treePaths = await FetchRepositoryTreeAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
         if (treePaths.Count > 0)
@@ -272,7 +301,64 @@ public class MainViewModel : INotifyPropertyChanged
             }
         }
 
-        return badges;
+        var badgeArray = badges.Count > 0 ? badges.ToArray() : Array.Empty<ModBadge>();
+        return new BadgeQueryResult(badgeArray, createdAt, lastPush);
+    }
+
+    private async Task<RepositoryLanguageMetadata?> FetchRepositoryLanguageMetadataAsync(string repo, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(repo) || !repo.Contains('/'))
+        {
+            return null;
+        }
+
+        var hasLua = false;
+
+        using (var response = await _httpClient
+            .GetAsync($"https://api.github.com/repos/{repo}/languages", cancellationToken)
+            .ConfigureAwait(false))
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, "Lua", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasLua = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        DateTime? createdAt = null;
+        DateTime? lastPush = null;
+
+        using (var response = await _httpClient
+            .GetAsync($"https://api.github.com/repos/{repo}", cancellationToken)
+            .ConfigureAwait(false))
+        {
+            if (response.IsSuccessStatusCode)
+            {
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                var root = document.RootElement;
+
+                if (root.TryGetProperty("created_at", out var createdAtElement) && createdAtElement.ValueKind == JsonValueKind.String)
+                {
+                    createdAt = ParseGitHubDate(createdAtElement.GetString());
+                }
+
+                if (root.TryGetProperty("pushed_at", out var pushedAtElement) && pushedAtElement.ValueKind == JsonValueKind.String)
+                {
+                    lastPush = ParseGitHubDate(pushedAtElement.GetString());
+                }
+            }
+        }
+
+        return new RepositoryLanguageMetadata(hasLua, createdAt, lastPush);
     }
 
     private async Task<List<string>> FetchRepositoryTreeAsync(string repo, CancellationToken cancellationToken)
@@ -344,6 +430,76 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         return null;
+    }
+
+    private Task ApplyMetadataUpdatesAsync(ModEntry entry, DateTime? createdAt, DateTime? lastPush, CancellationToken cancellationToken)
+    {
+        if (createdAt == null && lastPush == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var changed = entry.UpdateDates(createdAt, lastPush);
+        if (!changed)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (_modJsonEntryMap.TryGetValue(entry.Repo, out var jsonEntry))
+        {
+            jsonEntry.CreatedAt = entry.CreatedAt;
+            jsonEntry.LastPush = entry.LastPush;
+            return PersistModsJsonAsync(cancellationToken);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task PersistModsJsonAsync(CancellationToken cancellationToken)
+    {
+        if (_modsFilePath == null || _modJsonEntries.Count == 0)
+        {
+            return;
+        }
+
+        await _modsFileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true
+            };
+
+            await using var stream = new FileStream(
+                _modsFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                useAsync: true);
+
+            await JsonSerializer.SerializeAsync(stream, _modJsonEntries, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IOException)
+        {
+            // Ignore failures while attempting to sync metadata locally.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Ignore permission issues during background persistence.
+        }
+        catch (NotSupportedException)
+        {
+            // Ignore unsupported file scenarios.
+        }
+        catch (JsonException)
+        {
+            // Ignore serialization errors; the UI still reflects the updated data.
+        }
+        finally
+        {
+            _modsFileLock.Release();
+        }
     }
 
     private static bool ContainsLuaFiles(IEnumerable<string> paths) =>
@@ -477,6 +633,26 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private static DateTime? ParseGitHubDate(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (DateTime.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var result))
+        {
+            return result;
+        }
+
+        if (DateTime.TryParse(value, out result))
+        {
+            return result;
+        }
+
+        return null;
+    }
+
     private static bool ContainsRemasteredSegment(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -493,6 +669,10 @@ public class MainViewModel : INotifyPropertyChanged
         var segments = normalized.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
         return segments.Any(segment => string.Equals(segment, "remastered", StringComparison.OrdinalIgnoreCase));
     }
+
+    private sealed record BadgeQueryResult(IReadOnlyList<ModBadge> Badges, DateTime? CreatedAt, DateTime? LastPush);
+
+    private sealed record RepositoryLanguageMetadata(bool HasLua, DateTime? CreatedAt, DateTime? LastPush);
 
     private sealed class ModYamlAnalysis
     {
