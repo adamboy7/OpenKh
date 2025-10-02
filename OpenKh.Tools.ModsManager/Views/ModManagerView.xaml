@@ -68,7 +68,7 @@
                 <DataTemplate>
                     <Grid Height="64" Margin="3">
                         <Grid.ContextMenu>
-                            <ContextMenu DataContext="{Binding}">
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem Header="View in browser"
                                           Command="{Binding ViewInBrowserCommand}"
                                           IsEnabled="{Binding HasBrowserUrl}"/>
@@ -81,7 +81,7 @@
 
                         <CheckBox Grid.Column="0" VerticalAlignment="Center" VerticalContentAlignment="Center" IsChecked="{Binding Enabled}" Foreground="{Binding ColorTheme.TextColor}">
                             <CheckBox.ContextMenu>
-                                <ContextMenu DataContext="{Binding}">
+                                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                     <MenuItem Header="View in browser"
                                               Command="{Binding ViewInBrowserCommand}"
                                               IsEnabled="{Binding HasBrowserUrl}"/>
