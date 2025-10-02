@@ -336,6 +336,26 @@ public class MainViewModel : INotifyPropertyChanged
                 AddBadgeIfMissing(badges, ModBadge.CreatePs2());
             }
 
+            if (analysis.TargetsKh1)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateKh1());
+            }
+
+            if (analysis.TargetsKh2)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateKh2());
+            }
+
+            if (analysis.TargetsBbs)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateBbs());
+            }
+
+            if (analysis.TargetsRecom)
+            {
+                AddBadgeIfMissing(badges, ModBadge.CreateRecom());
+            }
+
             if (analysis.WritesRemasteredAssets)
             {
                 AddBadgeIfMissing(badges, ModBadge.CreateHd());
@@ -621,6 +641,11 @@ public class MainViewModel : INotifyPropertyChanged
                     {
                         CollectPlatformInfo(child.Value, analysis);
                     }
+                    else if (string.Equals(key, "game", StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(key, "collectionGames", StringComparison.OrdinalIgnoreCase))
+                    {
+                        CollectGameInfo(child.Value, analysis);
+                    }
 
                     AnalyzeYamlNode(child.Value, analysis);
                 }
@@ -661,6 +686,23 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private static void CollectGameInfo(YamlNode node, ModYamlAnalysis analysis)
+    {
+        switch (node)
+        {
+            case YamlScalarNode scalar:
+                UpdateGameFlags(scalar.Value, analysis);
+                break;
+            case YamlSequenceNode sequence:
+                foreach (var child in sequence)
+                {
+                    CollectGameInfo(child, analysis);
+                }
+
+                break;
+        }
+    }
+
     private static void UpdatePlatformFlags(string? value, ModYamlAnalysis analysis)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -676,6 +718,33 @@ public class MainViewModel : INotifyPropertyChanged
         else if (string.Equals(normalized, "ps2", StringComparison.OrdinalIgnoreCase))
         {
             analysis.TargetsPs2 = true;
+        }
+    }
+
+    private static void UpdateGameFlags(string? value, ModYamlAnalysis analysis)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var normalized = value.Trim();
+
+        if (string.Equals(normalized, "kh1", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.TargetsKh1 = true;
+        }
+        else if (string.Equals(normalized, "kh2", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.TargetsKh2 = true;
+        }
+        else if (string.Equals(normalized, "bbs", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.TargetsBbs = true;
+        }
+        else if (string.Equals(normalized, "recom", StringComparison.OrdinalIgnoreCase))
+        {
+            analysis.TargetsRecom = true;
         }
     }
 
@@ -724,6 +793,10 @@ public class MainViewModel : INotifyPropertyChanged
     {
         public bool TargetsPc { get; set; }
         public bool TargetsPs2 { get; set; }
+        public bool TargetsKh1 { get; set; }
+        public bool TargetsKh2 { get; set; }
+        public bool TargetsBbs { get; set; }
+        public bool TargetsRecom { get; set; }
         public bool WritesRemasteredAssets { get; set; }
         public bool UsesHeavyCopy { get; set; }
     }
