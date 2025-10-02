@@ -5,9 +5,13 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Data;
+using OpenKh.Tools.Common.Wpf;
 using OpenKh.Tools.ModBrowser.Models;
 
 namespace OpenKh.Tools.ModBrowser.ViewModels;
@@ -15,6 +19,8 @@ namespace OpenKh.Tools.ModBrowser.ViewModels;
 public class MainViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<ModEntry> _mods = new();
+    private readonly Dictionary<string, bool> _languageCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HttpClient _httpClient = CreateHttpClient();
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
@@ -24,6 +30,8 @@ public class MainViewModel : INotifyPropertyChanged
         ModsWithIconView = CreateView(ModCategory.WithIcon);
         ModsWithoutIconView = CreateView(ModCategory.WithoutIcon);
         ModsOtherView = CreateView(ModCategory.Other);
+
+        CheckLanguagesCommand = new RelayCommand<ModEntry>(entry => _ = LoadLanguagesForEntryAsync(entry));
 
         SortOptions = new List<SortOptionInfo>
         {
@@ -44,6 +52,8 @@ public class MainViewModel : INotifyPropertyChanged
     public ICollectionView ModsWithoutIconView { get; }
 
     public ICollectionView ModsOtherView { get; }
+
+    public RelayCommand<ModEntry> CheckLanguagesCommand { get; }
 
     public IReadOnlyList<SortOptionInfo> SortOptions { get; }
 
@@ -145,6 +155,7 @@ public class MainViewModel : INotifyPropertyChanged
             var entries = JsonSerializer.Deserialize<List<ModJsonEntry>>(json, options) ?? new List<ModJsonEntry>();
 
             _mods.Clear();
+            _languageCache.Clear();
             foreach (var entry in entries)
             {
                 var category = DetermineCategory(entry);
@@ -158,6 +169,7 @@ public class MainViewModel : INotifyPropertyChanged
                     iconUrl,
                     category,
                     hasLua));
+
             }
 
             RefreshViews();
@@ -166,6 +178,84 @@ public class MainViewModel : INotifyPropertyChanged
         {
             // Swallow and keep list empty. In a real app we might log this.
         }
+    }
+
+    private async Task LoadLanguagesForEntryAsync(ModEntry? entry, CancellationToken cancellationToken = default)
+    {
+        if (entry == null)
+        {
+            return;
+        }
+
+        if (_languageCache.TryGetValue(entry.Repo, out var cached))
+        {
+            entry.UpdateLuaUsage(cached);
+            return;
+        }
+
+        if (entry.IsCheckingLanguages)
+        {
+            return;
+        }
+
+        try
+        {
+            entry.SetCheckingLanguages(true);
+            var hasLua = await QueryRepositoryLanguagesAsync(entry.Repo, cancellationToken);
+            _languageCache[entry.Repo] = hasLua;
+            entry.UpdateLuaUsage(hasLua);
+        }
+        catch (HttpRequestException)
+        {
+            // Ignore connectivity issues; we simply leave the badge hidden.
+        }
+        catch (TaskCanceledException)
+        {
+            // Swallow cancellation.
+        }
+        catch (JsonException)
+        {
+            // Ignore malformed responses.
+        }
+        finally
+        {
+            entry.SetCheckingLanguages(false);
+        }
+    }
+
+    private async Task<bool> QueryRepositoryLanguagesAsync(string repo, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(repo) || !repo.Contains('/'))
+        {
+            return false;
+        }
+
+        using var response = await _httpClient.GetAsync($"https://api.github.com/repos/{repo}/languages", cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        foreach (var property in document.RootElement.EnumerateObject())
+        {
+            if (string.Equals(property.Name, "Lua", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static HttpClient CreateHttpClient()
+    {
+        var client = new HttpClient
+        {
+            Timeout = TimeSpan.FromSeconds(10)
+        };
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("OpenKh-ModBrowser/1.0 (+https://github.com/OpenKh/OpenKh)");
+        client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
+        return client;
     }
 
     private static string? ResolveModsFilePath()
