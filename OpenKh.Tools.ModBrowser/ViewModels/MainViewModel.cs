@@ -352,10 +352,28 @@ public class MainViewModel : INotifyPropertyChanged
     {
         if (entry.Matches != null && entry.Matches.TryGetValue("icon.png", out var iconMatch) && iconMatch.Exists)
         {
-            return string.IsNullOrWhiteSpace(iconMatch.Url) ? null : iconMatch.Url;
+            if (!string.IsNullOrWhiteSpace(iconMatch.Url))
+            {
+                return iconMatch.Url;
+            }
+        }
+
+        if (entry.HasIcon == true)
+        {
+            return BuildRawGitHubUrl(entry.Repo, "icon.png");
         }
 
         return null;
+    }
+
+    private static string? BuildRawGitHubUrl(string? repo, string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(repo) || string.IsNullOrWhiteSpace(relativePath))
+        {
+            return null;
+        }
+
+        return $"https://raw.githubusercontent.com/{repo}/HEAD/{relativePath}";
     }
 
     private static bool HasLuaLanguage(ModJsonEntry entry)
