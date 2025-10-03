@@ -58,14 +58,26 @@
         </Style>
     </Window.Resources>
     <DockPanel>
-        <Menu DockPanel.Dock="Top"
-              Background="#1f1f1f"
-              Foreground="White">
-            <MenuItem Header="_Options">
-                <MenuItem Header="_Add mod"
-                          Click="OnAddModClick" />
-            </MenuItem>
-        </Menu>
+        <ToolBarTray DockPanel.Dock="Top"
+                     Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
+            <ToolBar Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                     Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
+                     BorderThickness="0,0,0,1"
+                     Padding="2"
+                     Margin="0">
+                <Menu Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
+                      Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
+                      BorderThickness="0"
+                      Margin="0"
+                      Padding="0">
+                    <MenuItem Header="_Options">
+                        <MenuItem Header="_Add mod"
+                                  Click="OnAddModClick" />
+                    </MenuItem>
+                </Menu>
+            </ToolBar>
+        </ToolBarTray>
         <Border DockPanel.Dock="Top" Background="#1f1f1f" Padding="12">
             <StackPanel Orientation="Horizontal">
                 <TextBox Width="400"
