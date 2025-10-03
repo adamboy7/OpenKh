@@ -13,7 +13,7 @@ public partial class MainWindow : Window
         DataContext = new MainViewModel();
     }
 
-    private async void AddModButton_Click(object sender, RoutedEventArgs e)
+    private async void AddModMenuItem_Click(object sender, RoutedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
         {

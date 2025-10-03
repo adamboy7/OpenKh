@@ -62,10 +62,15 @@
             <StackPanel>
                 <ToolBarTray Background="Transparent" IsLocked="True">
                     <ToolBar Background="Transparent" BorderBrush="#3f3f3f" Foreground="White">
-                        <Button Content="Add Mod"
-                                Padding="12,4"
-                                Margin="0,0,8,0"
-                                Click="AddModButton_Click"/>
+                        <Menu Background="Transparent"
+                              Foreground="White"
+                              BorderBrush="{x:Null}"
+                              Margin="0,0,8,0">
+                            <MenuItem Header="Mods">
+                                <MenuItem Header="Add Mod..."
+                                          Click="AddModMenuItem_Click"/>
+                            </MenuItem>
+                        </Menu>
                     </ToolBar>
                 </ToolBarTray>
                 <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
