@@ -56,21 +56,36 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="FlatToolBarStyle" TargetType="ToolBar">
+            <Setter Property="Background" Value="{DynamicResource {x:Static SystemColors.ControlBrushKey}}" />
+            <Setter Property="Foreground" Value="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Padding" Value="2" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolBar">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ToolBarPanel Margin="0" IsItemsHost="True" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <DockPanel>
         <ToolBarTray DockPanel.Dock="Top"
+                     IsLocked="True"
                      Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}">
-            <ToolBar Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
-                     Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
-                     BorderBrush="{DynamicResource {x:Static SystemColors.ActiveBorderBrushKey}}"
-                     BorderThickness="0,0,0,1"
-                     Padding="2"
-                     Margin="0">
+            <ToolBar Style="{StaticResource FlatToolBarStyle}">
                 <Menu Background="{DynamicResource {x:Static SystemColors.ControlBrushKey}}"
                       Foreground="{DynamicResource {x:Static SystemColors.ControlTextBrushKey}}"
                       BorderThickness="0"
                       Margin="0"
-                      Padding="0">
+                      Padding="0"
+                      ToolBar.OverflowMode="Never">
                     <MenuItem Header="_Options">
                         <MenuItem Header="_Add mod"
                                   Click="OnAddModClick" />
