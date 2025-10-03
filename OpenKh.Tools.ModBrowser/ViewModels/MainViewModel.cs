@@ -32,6 +32,15 @@ public class MainViewModel : INotifyPropertyChanged
     private SearchFilters _activeFilters = SearchFilters.Empty;
     private string? _modsFilePath;
 
+    public enum AddModResult
+    {
+        Added,
+        InvalidInput,
+        AlreadyExists,
+        NotFound,
+        Failed
+    }
+
     public MainViewModel()
     {
         ModsWithIconView = CreateView(ModCategory.WithIcon);
@@ -97,6 +106,112 @@ public class MainViewModel : INotifyPropertyChanged
             _activeFilters = SearchFilters.Parse(value);
             OnPropertyChanged(nameof(SearchQuery));
             RefreshViews();
+        }
+    }
+
+    public async Task<AddModResult> AddModAsync(string? input, CancellationToken cancellationToken = default)
+    {
+        if (!TryNormalizeRepository(input, out var repo))
+        {
+            return AddModResult.InvalidInput;
+        }
+
+        if (_modJsonEntryMap.ContainsKey(repo))
+        {
+            return AddModResult.AlreadyExists;
+        }
+
+        _modsFilePath ??= ResolveModsFilePath() ?? Path.Combine(AppContext.BaseDirectory, "mods.json");
+
+        try
+        {
+            var metadata = await FetchRepositoryLanguageMetadataAsync(repo, cancellationToken);
+            if (metadata == null)
+            {
+                return AddModResult.NotFound;
+            }
+
+            var treePaths = await FetchRepositoryTreeAsync(repo, cancellationToken);
+            var hasModYml = treePaths.Any(path => string.Equals(Path.GetFileName(path), "mod.yml", StringComparison.OrdinalIgnoreCase));
+            var hasIcon = treePaths.Any(path => string.Equals(Path.GetFileName(path), "icon.png", StringComparison.OrdinalIgnoreCase));
+            var modYmlUrl = hasModYml ? BuildRawGitHubUrl(repo, "mod.yml") : null;
+
+            Dictionary<string, ModJsonMatch>? matches = null;
+            if (hasModYml || hasIcon)
+            {
+                matches = new Dictionary<string, ModJsonMatch>(StringComparer.OrdinalIgnoreCase);
+                if (hasModYml)
+                {
+                    matches["mod.yml"] = new ModJsonMatch
+                    {
+                        Exists = true,
+                        Url = modYmlUrl
+                    };
+                }
+
+                if (hasIcon)
+                {
+                    matches["icon.png"] = new ModJsonMatch
+                    {
+                        Exists = true,
+                        Url = BuildRawGitHubUrl(repo, "icon.png")
+                    };
+                }
+            }
+
+            var author = metadata.Owner;
+            if (string.IsNullOrWhiteSpace(author))
+            {
+                var parts = repo.Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0)
+                {
+                    author = parts[0];
+                }
+            }
+
+            var jsonEntry = new ModJsonEntry
+            {
+                Repo = repo,
+                Author = author,
+                CreatedAt = metadata.CreatedAt,
+                LastPush = metadata.LastPush,
+                ModYmlUrl = modYmlUrl,
+                HasIcon = hasIcon,
+                Matches = matches,
+                Languages = metadata.Languages
+            };
+
+            _modJsonEntries.Add(jsonEntry);
+            _modJsonEntryMap[repo] = jsonEntry;
+
+            var category = DetermineCategory(jsonEntry);
+            var iconUrl = ExtractIconUrl(jsonEntry);
+
+            _mods.Add(new ModEntry(
+                jsonEntry.Repo,
+                jsonEntry.Author,
+                jsonEntry.CreatedAt,
+                jsonEntry.LastPush,
+                iconUrl,
+                category,
+                jsonEntry.ModYmlUrl));
+
+            RefreshViews();
+            await PersistModsJsonAsync(cancellationToken);
+
+            return AddModResult.Added;
+        }
+        catch (HttpRequestException)
+        {
+            return AddModResult.Failed;
+        }
+        catch (TaskCanceledException)
+        {
+            return AddModResult.Failed;
+        }
+        catch (JsonException)
+        {
+            return AddModResult.Failed;
         }
     }
 
@@ -384,6 +499,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         var hasLua = false;
+        Dictionary<string, long>? languages = null;
 
         using (var response = await _httpClient
             .GetAsync($"https://api.github.com/repos/{repo}/languages", cancellationToken)
@@ -393,43 +509,69 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                 using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                languages = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
                 foreach (var property in document.RootElement.EnumerateObject())
                 {
                     if (string.Equals(property.Name, "Lua", StringComparison.OrdinalIgnoreCase))
                     {
                         hasLua = true;
-                        break;
                     }
+
+                    long value = 0;
+                    if (property.Value.ValueKind == JsonValueKind.Number)
+                    {
+                        if (property.Value.TryGetInt64(out var longValue))
+                        {
+                            value = longValue;
+                        }
+                        else if (property.Value.TryGetDouble(out var doubleValue))
+                        {
+                            value = (long)doubleValue;
+                        }
+                    }
+
+                    languages[property.Name] = value;
                 }
             }
         }
 
         DateTime? createdAt = null;
         DateTime? lastPush = null;
+        string? owner = null;
 
         using (var response = await _httpClient
             .GetAsync($"https://api.github.com/repos/{repo}", cancellationToken)
             .ConfigureAwait(false))
         {
-            if (response.IsSuccessStatusCode)
+            if (!response.IsSuccessStatusCode)
             {
-                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-                var root = document.RootElement;
+                return null;
+            }
 
-                if (root.TryGetProperty("created_at", out var createdAtElement) && createdAtElement.ValueKind == JsonValueKind.String)
-                {
-                    createdAt = ParseGitHubDate(createdAtElement.GetString());
-                }
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var root = document.RootElement;
 
-                if (root.TryGetProperty("pushed_at", out var pushedAtElement) && pushedAtElement.ValueKind == JsonValueKind.String)
+            if (root.TryGetProperty("created_at", out var createdAtElement) && createdAtElement.ValueKind == JsonValueKind.String)
+            {
+                createdAt = ParseGitHubDate(createdAtElement.GetString());
+            }
+
+            if (root.TryGetProperty("pushed_at", out var pushedAtElement) && pushedAtElement.ValueKind == JsonValueKind.String)
+            {
+                lastPush = ParseGitHubDate(pushedAtElement.GetString());
+            }
+
+            if (root.TryGetProperty("owner", out var ownerElement) && ownerElement.ValueKind == JsonValueKind.Object)
+            {
+                if (ownerElement.TryGetProperty("login", out var loginElement) && loginElement.ValueKind == JsonValueKind.String)
                 {
-                    lastPush = ParseGitHubDate(pushedAtElement.GetString());
+                    owner = loginElement.GetString();
                 }
             }
         }
 
-        return new RepositoryLanguageMetadata(hasLua, createdAt, lastPush);
+        return new RepositoryLanguageMetadata(hasLua, createdAt, lastPush, languages, owner);
     }
 
     private async Task<List<string>> FetchRepositoryTreeAsync(string repo, CancellationToken cancellationToken)
@@ -881,7 +1023,12 @@ public class MainViewModel : INotifyPropertyChanged
 
     private sealed record BadgeQueryResult(IReadOnlyList<ModBadge> Badges, DateTime? CreatedAt, DateTime? LastPush);
 
-    private sealed record RepositoryLanguageMetadata(bool HasLua, DateTime? CreatedAt, DateTime? LastPush);
+    private sealed record RepositoryLanguageMetadata(
+        bool HasLua,
+        DateTime? CreatedAt,
+        DateTime? LastPush,
+        Dictionary<string, long>? Languages,
+        string? Owner);
 
     private sealed class ModYamlAnalysis
     {
@@ -953,6 +1100,60 @@ public class MainViewModel : INotifyPropertyChanged
             yield return directory.FullName;
             directory = directory.Parent;
         }
+    }
+
+    private static bool TryNormalizeRepository(string? input, out string repository)
+    {
+        repository = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var candidate = input.Trim();
+
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+        {
+            var host = uri.Host;
+            var isGitHubHost = string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(host, "www.github.com", StringComparison.OrdinalIgnoreCase);
+            if (!isGitHubHost)
+            {
+                return false;
+            }
+
+            candidate = uri.AbsolutePath;
+        }
+        else if (candidate.Contains('@') && candidate.Contains(':'))
+        {
+            var colonIndex = candidate.IndexOf(':');
+            if (colonIndex >= 0 && colonIndex + 1 < candidate.Length)
+            {
+                candidate = candidate[(colonIndex + 1)..];
+            }
+        }
+
+        if (candidate.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = candidate["github.com/".Length..];
+        }
+
+        candidate = candidate.Trim('/');
+
+        if (candidate.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = candidate[..^4];
+        }
+
+        var parts = candidate.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2)
+        {
+            return false;
+        }
+
+        repository = $"{parts[0]}/{parts[1]}";
+        return true;
     }
 
     private static ModCategory DetermineCategory(ModJsonEntry entry)
