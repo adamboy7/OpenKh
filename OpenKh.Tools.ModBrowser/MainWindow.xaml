@@ -59,21 +59,7 @@
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#1f1f1f" Padding="12">
-            <StackPanel>
-                <ToolBarTray Background="Transparent" IsLocked="True">
-                    <ToolBar Background="Transparent" BorderBrush="#3f3f3f" Foreground="White">
-                        <Menu Background="Transparent"
-                              Foreground="White"
-                              BorderBrush="{x:Null}"
-                              Margin="0,0,8,0">
-                            <MenuItem Header="Mods">
-                                <MenuItem Header="Add Mod..."
-                                          Click="AddModMenuItem_Click"/>
-                            </MenuItem>
-                        </Menu>
-                    </ToolBar>
-                </ToolBarTray>
-                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+            <StackPanel Orientation="Horizontal">
                 <TextBox Width="400"
                          Background="#2d2d2d"
                          Foreground="White"
@@ -97,7 +83,6 @@
                         </Style>
                     </ComboBox.ItemContainerStyle>
                 </ComboBox>
-                </StackPanel>
             </StackPanel>
         </Border>
         <TabControl Background="Transparent" Foreground="White">
