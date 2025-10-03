@@ -373,22 +373,36 @@ public class MainViewModel : INotifyPropertyChanged
             foreach (var entry in entries)
             {
                 _modJsonEntries.Add(entry);
+
+                IReadOnlyList<ModBadge> cachedBadges = Array.Empty<ModBadge>();
                 if (!string.IsNullOrWhiteSpace(entry.Repo))
                 {
                     _modJsonEntryMap[entry.Repo] = entry;
+                    cachedBadges = ConvertBadges(entry.Badges);
+                    if (cachedBadges.Count > 0)
+                    {
+                        _badgeCache[entry.Repo] = cachedBadges;
+                    }
                 }
 
                 var category = DetermineCategory(entry);
                 var iconUrl = ExtractIconUrl(entry);
                 var modYmlUrl = ExtractModYmlUrl(entry);
-                _mods.Add(new ModEntry(
+                var modEntry = new ModEntry(
                     entry.Repo,
                     entry.Author,
                     entry.CreatedAt,
                     entry.LastPush,
                     iconUrl,
                     category,
-                    modYmlUrl));
+                    modYmlUrl);
+
+                if (cachedBadges.Count > 0)
+                {
+                    modEntry.UpdateBadges(cachedBadges);
+                }
+
+                _mods.Add(modEntry);
 
             }
 
@@ -475,10 +489,14 @@ public class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(entry.Repo))
+        {
+            return;
+        }
+
         if (_badgeCache.TryGetValue(entry.Repo, out var cached))
         {
             entry.UpdateBadges(cached);
-            return;
         }
 
         if (entry.IsLoadingBadges)
@@ -492,6 +510,7 @@ public class MainViewModel : INotifyPropertyChanged
             var result = await QueryBadgesAsync(entry, cancellationToken);
             _badgeCache[entry.Repo] = result.Badges;
             entry.UpdateBadges(result.Badges);
+            await PersistBadgeUpdatesAsync(entry, result.Badges, cancellationToken);
             await ApplyMetadataUpdatesAsync(entry, result.CreatedAt, result.LastPush, cancellationToken);
         }
         catch (HttpRequestException)
@@ -812,6 +831,31 @@ public class MainViewModel : INotifyPropertyChanged
         return null;
     }
 
+    private Task PersistBadgeUpdatesAsync(ModEntry entry, IReadOnlyList<ModBadge> badges, CancellationToken cancellationToken)
+    {
+        if (!_modJsonEntryMap.TryGetValue(entry.Repo, out var jsonEntry))
+        {
+            return Task.CompletedTask;
+        }
+
+        var normalized = badges ?? Array.Empty<ModBadge>();
+        var existing = ConvertBadges(jsonEntry.Badges);
+
+        if (AreBadgesEqual(existing, normalized))
+        {
+            if (normalized.Count == 0 && jsonEntry.Badges != null && jsonEntry.Badges.Count > 0)
+            {
+                jsonEntry.Badges = null;
+                return PersistModsJsonAsync(cancellationToken);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        jsonEntry.Badges = normalized.Count == 0 ? null : CreateJsonBadges(normalized);
+        return PersistModsJsonAsync(cancellationToken);
+    }
+
     private Task ApplyMetadataUpdatesAsync(ModEntry entry, DateTime? createdAt, DateTime? lastPush, CancellationToken cancellationToken)
     {
         if (createdAt == null && lastPush == null)
@@ -952,6 +996,78 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         badges.Add(badge);
+    }
+
+    private static IReadOnlyList<ModBadge> ConvertBadges(ICollection<ModJsonBadge>? badges)
+    {
+        if (badges == null || badges.Count == 0)
+        {
+            return Array.Empty<ModBadge>();
+        }
+
+        var converted = new List<ModBadge>(badges.Count);
+        foreach (var badge in badges)
+        {
+            if (badge == null ||
+                string.IsNullOrWhiteSpace(badge.Label) ||
+                string.IsNullOrWhiteSpace(badge.Background) ||
+                string.IsNullOrWhiteSpace(badge.Foreground))
+            {
+                continue;
+            }
+
+            converted.Add(new ModBadge(badge.Label, badge.Background, badge.Foreground));
+        }
+
+        return converted.Count == 0 ? Array.Empty<ModBadge>() : converted;
+    }
+
+    private static List<ModJsonBadge> CreateJsonBadges(IReadOnlyList<ModBadge> badges)
+    {
+        var jsonBadges = new List<ModJsonBadge>(badges.Count);
+        foreach (var badge in badges)
+        {
+            if (badge == null)
+            {
+                continue;
+            }
+
+            jsonBadges.Add(new ModJsonBadge
+            {
+                Label = badge.Label,
+                Background = badge.Background,
+                Foreground = badge.Foreground
+            });
+        }
+
+        return jsonBadges;
+    }
+
+    private static bool AreBadgesEqual(IReadOnlyList<ModBadge> left, IReadOnlyList<ModBadge> right)
+    {
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Count; i++)
+        {
+            var first = left[i];
+            var second = right[i];
+            if (!string.Equals(first.Label, second.Label, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(first.Background, second.Background, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(first.Foreground, second.Foreground, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static ModYamlAnalysis AnalyzeModYaml(string yaml)

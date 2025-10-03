@@ -38,4 +38,19 @@ public class ModJsonEntry
 
     [JsonPropertyName("languages")]
     public Dictionary<string, long>? Languages { get; set; }
+
+    [JsonPropertyName("badges")]
+    public List<ModJsonBadge>? Badges { get; set; }
+}
+
+public class ModJsonBadge
+{
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
+
+    [JsonPropertyName("background")]
+    public string? Background { get; set; }
+
+    [JsonPropertyName("foreground")]
+    public string? Foreground { get; set; }
 }
