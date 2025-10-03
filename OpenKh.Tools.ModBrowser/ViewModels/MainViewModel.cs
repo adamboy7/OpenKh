@@ -6,7 +6,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -19,16 +18,6 @@ using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
 namespace OpenKh.Tools.ModBrowser.ViewModels;
-
-public enum AddModStatus
-{
-    Success,
-    ModsFileUnavailable,
-    InvalidRepository,
-    AlreadyExists,
-    RepositoryNotFound,
-    Failed
-}
 
 public class MainViewModel : INotifyPropertyChanged
 {
@@ -108,75 +97,6 @@ public class MainViewModel : INotifyPropertyChanged
             _activeFilters = SearchFilters.Parse(value);
             OnPropertyChanged(nameof(SearchQuery));
             RefreshViews();
-        }
-    }
-
-    public async Task<AddModStatus> AddModAsync(string repositoryInput, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(repositoryInput))
-        {
-            return AddModStatus.InvalidRepository;
-        }
-
-        if (_modsFilePath == null)
-        {
-            _modsFilePath = ResolveModsFilePath();
-            if (_modsFilePath == null)
-            {
-                return AddModStatus.ModsFileUnavailable;
-            }
-        }
-
-        var normalizedRepo = NormalizeRepositoryInput(repositoryInput);
-        if (normalizedRepo == null)
-        {
-            return AddModStatus.InvalidRepository;
-        }
-
-        if (_modJsonEntryMap.ContainsKey(normalizedRepo))
-        {
-            return AddModStatus.AlreadyExists;
-        }
-
-        try
-        {
-            var entry = await BuildEntryForRepositoryAsync(normalizedRepo, cancellationToken);
-            if (entry == null)
-            {
-                return AddModStatus.RepositoryNotFound;
-            }
-
-            _modJsonEntries.Add(entry);
-            if (!string.IsNullOrWhiteSpace(entry.Repo))
-            {
-                _modJsonEntryMap[entry.Repo] = entry;
-            }
-
-            var category = DetermineCategory(entry);
-            var iconUrl = ExtractIconUrl(entry);
-            var modYmlUrl = ExtractModYmlUrl(entry);
-            var modEntry = new ModEntry(
-                entry.Repo,
-                entry.Author,
-                entry.CreatedAt,
-                entry.LastPush,
-                iconUrl,
-                category,
-                modYmlUrl);
-
-            _mods.Add(modEntry);
-            RefreshViews();
-
-            await PersistModsJsonAsync(cancellationToken);
-            return AddModStatus.Success;
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch
-        {
-            return AddModStatus.Failed;
         }
     }
 
@@ -454,134 +374,6 @@ public class MainViewModel : INotifyPropertyChanged
 
         var badgeArray = badges.Count > 0 ? badges.ToArray() : Array.Empty<ModBadge>();
         return new BadgeQueryResult(badgeArray, createdAt, lastPush);
-    }
-
-    private async Task<ModJsonEntry?> BuildEntryForRepositoryAsync(string repository, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(repository))
-        {
-            return null;
-        }
-
-        using var response = await _httpClient
-            .GetAsync($"https://api.github.com/repos/{repository}", cancellationToken)
-            .ConfigureAwait(false);
-
-        if (response.StatusCode == HttpStatusCode.NotFound)
-        {
-            return null;
-        }
-
-        response.EnsureSuccessStatusCode();
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-        var root = document.RootElement;
-
-        var repoFullName = repository;
-        if (root.TryGetProperty("full_name", out var fullNameElement) && fullNameElement.ValueKind == JsonValueKind.String)
-        {
-            var fullName = fullNameElement.GetString();
-            if (!string.IsNullOrWhiteSpace(fullName))
-            {
-                repoFullName = fullName!;
-            }
-        }
-
-        string? author = null;
-        if (root.TryGetProperty("owner", out var ownerElement) && ownerElement.ValueKind == JsonValueKind.Object)
-        {
-            if (ownerElement.TryGetProperty("login", out var loginElement) && loginElement.ValueKind == JsonValueKind.String)
-            {
-                author = loginElement.GetString();
-            }
-        }
-
-        DateTime? createdAt = null;
-        if (root.TryGetProperty("created_at", out var createdAtElement) && createdAtElement.ValueKind == JsonValueKind.String)
-        {
-            createdAt = ParseGitHubDate(createdAtElement.GetString());
-        }
-
-        DateTime? lastPush = null;
-        if (root.TryGetProperty("pushed_at", out var pushedAtElement) && pushedAtElement.ValueKind == JsonValueKind.String)
-        {
-            lastPush = ParseGitHubDate(pushedAtElement.GetString());
-        }
-
-        var languages = await FetchRepositoryLanguagesAsync(repoFullName, cancellationToken).ConfigureAwait(false);
-        var paths = await FetchRepositoryTreeAsync(repoFullName, cancellationToken).ConfigureAwait(false);
-
-        var matchesDictionary = new Dictionary<string, ModJsonMatch>(StringComparer.OrdinalIgnoreCase);
-        string? modYmlUrl = null;
-        string? iconUrl = null;
-
-        var modYmlPath = FindRepositoryPath(paths, "mod.yml");
-        if (modYmlPath != null)
-        {
-            modYmlUrl = BuildRawGitHubUrl(repoFullName, modYmlPath);
-            matchesDictionary["mod.yml"] = new ModJsonMatch
-            {
-                Exists = true,
-                Url = modYmlUrl
-            };
-        }
-
-        var iconPath = FindRepositoryPath(paths, "icon.png");
-        if (iconPath != null)
-        {
-            iconUrl = BuildRawGitHubUrl(repoFullName, iconPath);
-            matchesDictionary["icon.png"] = new ModJsonMatch
-            {
-                Exists = true,
-                Url = iconUrl
-            };
-        }
-
-        Dictionary<string, ModJsonMatch>? matches = matchesDictionary.Count > 0 ? matchesDictionary : null;
-
-        return new ModJsonEntry
-        {
-            Repo = repoFullName,
-            Author = string.IsNullOrWhiteSpace(author) ? null : author,
-            CreatedAt = createdAt,
-            LastPush = lastPush,
-            Matches = matches,
-            ModYmlUrl = modYmlUrl,
-            HasIcon = iconPath != null && string.Equals(iconPath, "icon.png", StringComparison.OrdinalIgnoreCase) ? true : null,
-            Languages = languages
-        };
-    }
-
-    private async Task<Dictionary<string, long>?> FetchRepositoryLanguagesAsync(string repo, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(repo))
-        {
-            return null;
-        }
-
-        using var response = await _httpClient
-            .GetAsync($"https://api.github.com/repos/{repo}/languages", cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!response.IsSuccessStatusCode)
-        {
-            return null;
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-
-        var languages = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
-        foreach (var property in document.RootElement.EnumerateObject())
-        {
-            if (property.Value.ValueKind == JsonValueKind.Number && property.Value.TryGetInt64(out var bytes))
-            {
-                languages[property.Name] = bytes;
-            }
-        }
-
-        return languages.Count > 0 ? languages : null;
     }
 
     private async Task<RepositoryLanguageMetadata?> FetchRepositoryLanguageMetadataAsync(string repo, CancellationToken cancellationToken)
@@ -1249,61 +1041,6 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         return $"https://raw.githubusercontent.com/{repo}/HEAD/{relativePath}";
-    }
-
-    private static string? FindRepositoryPath(IEnumerable<string> paths, string fileName)
-    {
-        if (paths == null)
-        {
-            return null;
-        }
-
-        return paths
-            .Where(path => path.EndsWith(fileName, StringComparison.OrdinalIgnoreCase))
-            .OrderBy(path => path.Count(ch => ch == '/' || ch == '\\'))
-            .ThenBy(path => path.Length)
-            .FirstOrDefault();
-    }
-
-    private static string? NormalizeRepositoryInput(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return null;
-        }
-
-        var candidate = value.Trim();
-
-        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
-        {
-            if (!string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) &&
-                !uri.Host.EndsWith(".github.com", StringComparison.OrdinalIgnoreCase))
-            {
-                return null;
-            }
-
-            var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length < 2)
-            {
-                return null;
-            }
-
-            candidate = $"{segments[0]}/{segments[1]}";
-        }
-
-        candidate = candidate.Trim('/');
-
-        if (candidate.EndsWith(".git", StringComparison.OrdinalIgnoreCase))
-        {
-            candidate = candidate[..^4];
-        }
-
-        if (candidate.Count(ch => ch == '/') != 1)
-        {
-            return null;
-        }
-
-        return candidate;
     }
 
     private bool MatchesSearch(ModEntry mod)
