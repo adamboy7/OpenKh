@@ -12,7 +12,9 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using System.Windows.Data;
+using System.Windows.Threading;
 using OpenKh.Tools.Common.Wpf;
 using OpenKh.Tools.ModBrowser.Models;
 using YamlDotNet.Core;
@@ -23,6 +25,7 @@ namespace OpenKh.Tools.ModBrowser.ViewModels;
 public class MainViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<ModEntry> _mods = new();
+    private readonly Dispatcher _dispatcher;
     private readonly Dictionary<string, IReadOnlyList<ModBadge>> _badgeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ModJsonEntry> _modJsonEntries = new();
     private readonly Dictionary<string, ModJsonEntry> _modJsonEntryMap = new(StringComparer.OrdinalIgnoreCase);
@@ -63,6 +66,8 @@ public class MainViewModel : INotifyPropertyChanged
 
     public MainViewModel()
     {
+        _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+
         ModsWithIconView = CreateView(ModCategory.WithIcon);
         ModsWithoutIconView = CreateView(ModCategory.WithoutIcon);
         ModsOtherView = CreateView(ModCategory.Other);
@@ -208,16 +213,20 @@ public class MainViewModel : INotifyPropertyChanged
             var category = DetermineCategory(jsonEntry);
             var iconUrl = ExtractIconUrl(jsonEntry);
 
-            _mods.Add(new ModEntry(
+            var entry = new ModEntry(
                 jsonEntry.Repo,
                 jsonEntry.Author,
                 jsonEntry.CreatedAt,
                 jsonEntry.LastPush,
                 iconUrl,
                 category,
-                jsonEntry.ModYmlUrl));
+                jsonEntry.ModYmlUrl);
 
-            RefreshViews();
+            await _dispatcher.InvokeAsync(() =>
+            {
+                _mods.Add(entry);
+                RefreshViews();
+            });
             await PersistModsJsonAsync(cancellationToken);
 
             return AddModResult.Added;
