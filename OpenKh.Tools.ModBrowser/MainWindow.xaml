@@ -90,6 +90,10 @@
                         <MenuItem Header="_Add mod"
                                   Click="OnAddModClick" />
                     </MenuItem>
+                    <MenuItem Header="_Tools">
+                        <MenuItem Header="_Follow"
+                                  Click="OnFollowClick" />
+                    </MenuItem>
                 </Menu>
             </ToolBar>
         </ToolBarTray>

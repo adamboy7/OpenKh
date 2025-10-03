@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
@@ -26,11 +27,14 @@ public class MainViewModel : INotifyPropertyChanged
     private readonly List<ModJsonEntry> _modJsonEntries = new();
     private readonly Dictionary<string, ModJsonEntry> _modJsonEntryMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _modsFileLock = new(1, 1);
+    private readonly SemaphoreSlim _followedUsersFileLock = new(1, 1);
+    private readonly HashSet<string> _followedUsers = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient _httpClient = CreateHttpClient();
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
     private string? _modsFilePath;
+    private string? _followedUsersFilePath;
 
     public enum AddModResult
     {
@@ -40,6 +44,22 @@ public class MainViewModel : INotifyPropertyChanged
         NotFound,
         Failed
     }
+
+    public enum FollowUserStatus
+    {
+        Success,
+        InvalidInput,
+        NotFound,
+        Failed
+    }
+
+    public sealed record FollowUserResult(
+        FollowUserStatus Status,
+        string Username,
+        int AddedCount,
+        int AlreadyTrackedCount,
+        int FailedCount,
+        int TotalRepositories);
 
     public MainViewModel()
     {
@@ -60,6 +80,7 @@ public class MainViewModel : INotifyPropertyChanged
         _selectedSortOption = SortOption.CreationDate;
         ApplySorting();
         LoadMods();
+        LoadFollowedUsers();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -215,6 +236,70 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task<FollowUserResult> FollowUserAsync(string? input, CancellationToken cancellationToken = default)
+    {
+        if (!TryNormalizeUsername(input, out var username))
+        {
+            return new FollowUserResult(FollowUserStatus.InvalidInput, string.Empty, 0, 0, 0, 0);
+        }
+
+        try
+        {
+            var (repositories, notFound) = await FetchUserRepositoriesAsync(username, cancellationToken).ConfigureAwait(false);
+            if (notFound)
+            {
+                return new FollowUserResult(FollowUserStatus.NotFound, username, 0, 0, 0, 0);
+            }
+
+            var uniqueRepositories = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var added = 0;
+            var alreadyTracked = 0;
+            var failed = 0;
+
+            foreach (var repository in repositories)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (!uniqueRepositories.Add(repository))
+                {
+                    continue;
+                }
+
+                var result = await AddModAsync(repository, cancellationToken).ConfigureAwait(false);
+                switch (result)
+                {
+                    case AddModResult.Added:
+                        added++;
+                        break;
+                    case AddModResult.AlreadyExists:
+                        alreadyTracked++;
+                        break;
+                    case AddModResult.InvalidInput:
+                    case AddModResult.NotFound:
+                    case AddModResult.Failed:
+                        failed++;
+                        break;
+                }
+            }
+
+            await RegisterFollowedUserAsync(username, cancellationToken).ConfigureAwait(false);
+
+            return new FollowUserResult(FollowUserStatus.Success, username, added, alreadyTracked, failed, uniqueRepositories.Count);
+        }
+        catch (HttpRequestException)
+        {
+            return new FollowUserResult(FollowUserStatus.Failed, username, 0, 0, 0, 0);
+        }
+        catch (OperationCanceledException)
+        {
+            return new FollowUserResult(FollowUserStatus.Failed, username, 0, 0, 0, 0);
+        }
+        catch (JsonException)
+        {
+            return new FollowUserResult(FollowUserStatus.Failed, username, 0, 0, 0, 0);
+        }
+    }
+
     private ListCollectionView CreateView(ModCategory category)
     {
         var view = new ListCollectionView(_mods)
@@ -312,6 +397,32 @@ public class MainViewModel : INotifyPropertyChanged
         catch (Exception ex) when (ex is IOException || ex is JsonException)
         {
             // Swallow and keep list empty. In a real app we might log this.
+        }
+    }
+
+    private void LoadFollowedUsers()
+    {
+        var filePath = ResolveFollowedUsersFilePath() ?? Path.Combine(AppContext.BaseDirectory, "followed-users.txt");
+        _followedUsersFilePath = filePath;
+
+        try
+        {
+            if (File.Exists(filePath))
+            {
+                _followedUsers.Clear();
+                foreach (var line in File.ReadAllLines(filePath))
+                {
+                    var normalized = line.Trim();
+                    if (!string.IsNullOrEmpty(normalized))
+                    {
+                        _followedUsers.Add(normalized);
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+        {
+            // Ignore errors while loading followed users.
         }
     }
 
@@ -489,6 +600,62 @@ public class MainViewModel : INotifyPropertyChanged
 
         var badgeArray = badges.Count > 0 ? badges.ToArray() : Array.Empty<ModBadge>();
         return new BadgeQueryResult(badgeArray, createdAt, lastPush);
+    }
+
+    private async Task<(List<string> repositories, bool notFound)> FetchUserRepositoriesAsync(string username, CancellationToken cancellationToken)
+    {
+        var repositories = new List<string>();
+        var page = 1;
+
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            using var response = await _httpClient
+                .GetAsync($"https://api.github.com/users/{username}/repos?per_page=100&page={page}", cancellationToken)
+                .ConfigureAwait(false);
+
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return (new List<string>(), true);
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"GitHub API responded with status {(int)response.StatusCode}.");
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+            if (document.RootElement.ValueKind != JsonValueKind.Array)
+            {
+                break;
+            }
+
+            var count = 0;
+            foreach (var element in document.RootElement.EnumerateArray())
+            {
+                count++;
+                if (element.TryGetProperty("full_name", out var fullNameProperty))
+                {
+                    var fullName = fullNameProperty.GetString();
+                    if (!string.IsNullOrWhiteSpace(fullName))
+                    {
+                        repositories.Add(fullName.Trim());
+                    }
+                }
+            }
+
+            if (count < 100)
+            {
+                break;
+            }
+
+            page++;
+        }
+
+        return (repositories, false);
     }
 
     private async Task<RepositoryLanguageMetadata?> FetchRepositoryLanguageMetadataAsync(string repo, CancellationToken cancellationToken)
@@ -712,6 +879,58 @@ public class MainViewModel : INotifyPropertyChanged
         finally
         {
             _modsFileLock.Release();
+        }
+    }
+
+    private async Task RegisterFollowedUserAsync(string username, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            return;
+        }
+
+        if (!_followedUsers.Add(username))
+        {
+            return;
+        }
+
+        _followedUsersFilePath ??= ResolveFollowedUsersFilePath() ?? Path.Combine(AppContext.BaseDirectory, "followed-users.txt");
+        await PersistFollowedUsersAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task PersistFollowedUsersAsync(CancellationToken cancellationToken)
+    {
+        if (_followedUsersFilePath == null)
+        {
+            return;
+        }
+
+        await _followedUsersFileLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var directory = Path.GetDirectoryName(_followedUsersFilePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var ordered = _followedUsers
+                .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            await File.WriteAllLinesAsync(_followedUsersFilePath, ordered, cancellationToken).ConfigureAwait(false);
+        }
+        catch (IOException)
+        {
+            // Ignore failures while attempting to sync followed users locally.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Ignore permission issues while persisting followed users.
+        }
+        finally
+        {
+            _followedUsersFileLock.Release();
         }
     }
 
@@ -1102,6 +1321,26 @@ public class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private static string? ResolveFollowedUsersFilePath()
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var directory in EnumerateCandidateDirectories())
+        {
+            var candidate = Path.Combine(directory, "followed-users.txt");
+            if (!seen.Add(candidate))
+            {
+                continue;
+            }
+
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
     private static bool TryNormalizeRepository(string? input, out string repository)
     {
         repository = string.Empty;
@@ -1153,6 +1392,61 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         repository = $"{parts[0]}/{parts[1]}";
+        return true;
+    }
+
+    private static bool TryNormalizeUsername(string? input, out string username)
+    {
+        username = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(input))
+        {
+            return false;
+        }
+
+        var candidate = input.Trim();
+
+        if (candidate.StartsWith("@", StringComparison.Ordinal))
+        {
+            candidate = candidate[1..];
+        }
+
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri))
+        {
+            var host = uri.Host;
+            var isGitHubHost = string.Equals(host, "github.com", StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(host, "www.github.com", StringComparison.OrdinalIgnoreCase);
+            if (!isGitHubHost)
+            {
+                return false;
+            }
+
+            candidate = uri.AbsolutePath;
+        }
+
+        if (candidate.StartsWith("github.com/", StringComparison.OrdinalIgnoreCase))
+        {
+            candidate = candidate["github.com/".Length..];
+        }
+
+        candidate = candidate.Trim('/');
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        var slashIndex = candidate.IndexOf('/');
+        if (slashIndex >= 0)
+        {
+            candidate = candidate[..slashIndex];
+        }
+
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        username = candidate;
         return true;
     }
 
