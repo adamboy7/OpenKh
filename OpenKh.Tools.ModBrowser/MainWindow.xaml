@@ -58,6 +58,14 @@
         </Style>
     </Window.Resources>
     <DockPanel>
+        <Menu DockPanel.Dock="Top"
+              Background="#1f1f1f"
+              Foreground="White">
+            <MenuItem Header="_Options">
+                <MenuItem Header="_Add mod"
+                          Click="OnAddModClick" />
+            </MenuItem>
+        </Menu>
         <Border DockPanel.Dock="Top" Background="#1f1f1f" Padding="12">
             <StackPanel Orientation="Horizontal">
                 <TextBox Width="400"
