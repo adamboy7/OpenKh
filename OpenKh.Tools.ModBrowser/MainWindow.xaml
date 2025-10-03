@@ -21,6 +21,41 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="TransparentListViewStyle" TargetType="ListView">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
+            <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Disabled" />
+        </Style>
+        <Style x:Key="TransparentListViewItemStyle" TargetType="ListViewItem">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Stretch" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListViewItem">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="Transparent" />
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="Transparent" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <DockPanel>
         <Border DockPanel.Dock="Top" Background="#1f1f1f" Padding="12">
@@ -52,11 +87,12 @@
         </Border>
         <TabControl Background="Transparent" Foreground="White">
             <TabItem Header="With Icons">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
-                    <ItemsControl ItemsSource="{Binding ModsWithIconView}" Background="Transparent">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
+                <ListView ItemsSource="{Binding ModsWithIconView}"
+                          Style="{StaticResource TransparentListViewStyle}"
+                          ItemContainerStyle="{StaticResource TransparentListViewItemStyle}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="Open in Browser"
@@ -116,17 +152,17 @@
                                         </StackPanel>
                                     </Grid>
                                 </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
             </TabItem>
             <TabItem Header="Without Icons">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
-                    <ItemsControl ItemsSource="{Binding ModsWithoutIconView}" Background="Transparent">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
+                <ListView ItemsSource="{Binding ModsWithoutIconView}"
+                          Style="{StaticResource TransparentListViewStyle}"
+                          ItemContainerStyle="{StaticResource TransparentListViewItemStyle}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="Open in Browser"
@@ -186,17 +222,17 @@
                                         </StackPanel>
                                     </Grid>
                                 </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
             </TabItem>
             <TabItem Header="Other">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
-                    <ItemsControl ItemsSource="{Binding ModsOtherView}" Background="Transparent">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
+                <ListView ItemsSource="{Binding ModsOtherView}"
+                          Style="{StaticResource TransparentListViewStyle}"
+                          ItemContainerStyle="{StaticResource TransparentListViewItemStyle}">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                             <MenuItem Header="Open in Browser"
@@ -281,10 +317,9 @@
                                         </StackPanel>
                                     </Grid>
                                 </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
             </TabItem>
         </TabControl>
     </DockPanel>
