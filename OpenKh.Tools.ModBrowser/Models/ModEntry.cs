@@ -17,6 +17,9 @@ public class ModEntry : INotifyPropertyChanged
     private DateTime? _createdAt;
     private DateTime? _lastPush;
     private string? _iconPath;
+    private string? _remoteIconUrl;
+    private ModCategory _category;
+    private string? _modYmlUrl;
 
     public ModEntry(
         string repo,
@@ -31,10 +34,10 @@ public class ModEntry : INotifyPropertyChanged
         Author = author;
         _createdAt = createdAt;
         _lastPush = lastPush;
-        RemoteIconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
-        IconUrl = RemoteIconUrl;
-        Category = category;
-        ModYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
+        _remoteIconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
+        IconUrl = _remoteIconUrl;
+        _category = category;
+        _modYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
     }
 
     public string Repo { get; }
@@ -75,7 +78,20 @@ public class ModEntry : INotifyPropertyChanged
         }
     }
 
-    public string? RemoteIconUrl { get; }
+    public string? RemoteIconUrl
+    {
+        get => _remoteIconUrl;
+        private set
+        {
+            if (_remoteIconUrl == value)
+            {
+                return;
+            }
+
+            _remoteIconUrl = value;
+            OnPropertyChanged(nameof(RemoteIconUrl));
+        }
+    }
 
     public string? IconUrl
     {
@@ -95,9 +111,35 @@ public class ModEntry : INotifyPropertyChanged
 
     public bool HasIcon => !string.IsNullOrWhiteSpace(IconUrl);
 
-    public ModCategory Category { get; }
+    public ModCategory Category
+    {
+        get => _category;
+        private set
+        {
+            if (_category == value)
+            {
+                return;
+            }
 
-    public string? ModYmlUrl { get; }
+            _category = value;
+            OnPropertyChanged(nameof(Category));
+        }
+    }
+
+    public string? ModYmlUrl
+    {
+        get => _modYmlUrl;
+        private set
+        {
+            if (_modYmlUrl == value)
+            {
+                return;
+            }
+
+            _modYmlUrl = value;
+            OnPropertyChanged(nameof(ModYmlUrl));
+        }
+    }
 
     private IReadOnlyList<ModBadge> _badges = Array.Empty<ModBadge>();
 
@@ -168,6 +210,12 @@ public class ModEntry : INotifyPropertyChanged
     public void SetLoadingBadges(bool isLoading) => IsLoadingBadges = isLoading;
 
     public void SetIconPath(string? iconPath) => IconUrl = string.IsNullOrWhiteSpace(iconPath) ? null : iconPath;
+
+    public void UpdateCategory(ModCategory category) => Category = category;
+
+    public void UpdateModYmlUrl(string? modYmlUrl) => ModYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
+
+    public void UpdateRemoteIcon(string? iconUrl) => RemoteIconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
 
     private static string FormatDate(string prefix, DateTime? value) => value.HasValue
         ? $"{prefix}: {value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"

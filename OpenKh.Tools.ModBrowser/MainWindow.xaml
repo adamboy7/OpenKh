@@ -134,6 +134,8 @@
                             <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="Update Metadata"
+                                                      Click="OnUpdateModClick" />
                                             <MenuItem Header="Open in Browser"
                                                       Command="{Binding DataContext.OpenInBrowserCommand, Source={x:Reference MainWindowRoot}}"
                                                       CommandParameter="{Binding}" />
@@ -204,6 +206,8 @@
                             <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="Update Metadata"
+                                                      Click="OnUpdateModClick" />
                                             <MenuItem Header="Open in Browser"
                                                       Command="{Binding DataContext.OpenInBrowserCommand, Source={x:Reference MainWindowRoot}}"
                                                       CommandParameter="{Binding}" />
@@ -274,6 +278,8 @@
                             <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="Update Metadata"
+                                                      Click="OnUpdateModClick" />
                                             <MenuItem Header="Open in Browser"
                                                       Command="{Binding DataContext.OpenInBrowserCommand, Source={x:Reference MainWindowRoot}}"
                                                       CommandParameter="{Binding}" />

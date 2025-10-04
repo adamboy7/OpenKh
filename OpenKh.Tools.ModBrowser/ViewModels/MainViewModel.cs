@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -43,9 +46,11 @@ public class MainViewModel : INotifyPropertyChanged
     private readonly SemaphoreSlim _badgeCacheLock = new(1, 1);
     private readonly HashSet<string> _iconDownloadsInProgress = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _iconDownloadsLock = new();
+    private readonly object _placeholderIconLock = new();
     private readonly string _cacheDirectory;
     private readonly string _badgeCacheFilePath;
     private readonly string _iconCacheDirectory;
+    private string? _offlinePlaceholderIconPath;
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
@@ -66,6 +71,15 @@ public class MainViewModel : INotifyPropertyChanged
         Success,
         InvalidInput,
         NotFound,
+        Failed
+    }
+
+    public enum UpdateModResult
+    {
+        Success,
+        NotTracked,
+        NotFound,
+        Offline,
         Failed
     }
 
@@ -176,9 +190,10 @@ public class MainViewModel : INotifyPropertyChanged
                 return AddModResult.NotFound;
             }
 
-            var treePaths = await FetchRepositoryTreeAsync(repo, cancellationToken);
-            var hasModYml = treePaths.Any(path => string.Equals(Path.GetFileName(path), "mod.yml", StringComparison.OrdinalIgnoreCase));
-            var hasIcon = treePaths.Any(path => string.Equals(Path.GetFileName(path), "icon.png", StringComparison.OrdinalIgnoreCase));
+            var treeResult = await FetchRepositoryTreeAsync(repo, cancellationToken);
+            var treePaths = treeResult.Paths;
+            var hasModYml = treeResult.Success && treePaths.Any(path => string.Equals(Path.GetFileName(path), "mod.yml", StringComparison.OrdinalIgnoreCase));
+            var hasIcon = treeResult.Success && treePaths.Any(path => string.Equals(Path.GetFileName(path), "icon.png", StringComparison.OrdinalIgnoreCase));
             var modYmlUrl = hasModYml ? BuildRawGitHubUrl(repo, "mod.yml") : null;
 
             Dictionary<string, ModJsonMatch>? matches = null;
@@ -263,6 +278,90 @@ public class MainViewModel : INotifyPropertyChanged
         catch (JsonException)
         {
             return AddModResult.Failed;
+        }
+    }
+
+    public async Task<UpdateModResult> UpdateModAsync(ModEntry? entry, CancellationToken cancellationToken = default)
+    {
+        if (entry == null)
+        {
+            return UpdateModResult.NotTracked;
+        }
+
+        if (!_modJsonEntryMap.TryGetValue(entry.Repo, out var jsonEntry))
+        {
+            return UpdateModResult.NotTracked;
+        }
+
+        try
+        {
+            var metadata = await FetchRepositoryLanguageMetadataAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+            if (metadata == null)
+            {
+                return UpdateModResult.NotFound;
+            }
+
+            var treeResult = await FetchRepositoryTreeAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+            if (treeResult.NotFound)
+            {
+                return UpdateModResult.NotFound;
+            }
+
+            if (!treeResult.Success)
+            {
+                return UpdateModResult.Failed;
+            }
+
+            var treePaths = treeResult.Paths;
+            var hasModYml = treePaths.Any(path => string.Equals(Path.GetFileName(path), "mod.yml", StringComparison.OrdinalIgnoreCase));
+            var hasIcon = treePaths.Any(path => string.Equals(Path.GetFileName(path), "icon.png", StringComparison.OrdinalIgnoreCase));
+            var modYmlUrl = hasModYml ? BuildRawGitHubUrl(entry.Repo, "mod.yml") : null;
+            var iconUrl = hasIcon ? BuildRawGitHubUrl(entry.Repo, "icon.png") : null;
+
+            UpdateMatch(jsonEntry, "mod.yml", hasModYml, modYmlUrl);
+            UpdateMatch(jsonEntry, "icon.png", hasIcon, iconUrl);
+
+            jsonEntry.ModYmlUrl = modYmlUrl;
+            jsonEntry.HasIcon = hasIcon;
+            jsonEntry.CreatedAt = metadata.CreatedAt;
+            jsonEntry.LastPush = metadata.LastPush;
+            jsonEntry.Languages = metadata.Languages;
+
+            if (!string.IsNullOrWhiteSpace(metadata.Owner))
+            {
+                jsonEntry.Author = metadata.Owner;
+            }
+
+            entry.UpdateModYmlUrl(jsonEntry.ModYmlUrl);
+            entry.UpdateRemoteIcon(iconUrl);
+            entry.UpdateDates(metadata.CreatedAt, metadata.LastPush);
+            entry.UpdateCategory(DetermineCategory(jsonEntry));
+
+            await UpdateIconCacheForEntryAsync(entry, hasIcon, iconUrl, cancellationToken).ConfigureAwait(false);
+
+            var badgeResult = await QueryBadgesAsync(entry, cancellationToken, metadata, treeResult).ConfigureAwait(false);
+            var cacheEntry = new BadgeCacheEntry(badgeResult.Badges, badgeResult.CreatedAt, badgeResult.LastPush, DateTime.UtcNow);
+            _badgeCache[entry.Repo] = cacheEntry;
+            entry.UpdateBadges(cacheEntry.Badges);
+
+            await PersistBadgeCacheAsync(cancellationToken).ConfigureAwait(false);
+            await PersistModsJsonAsync(cancellationToken).ConfigureAwait(false);
+
+            await _dispatcher.InvokeAsync(RefreshViews);
+
+            return UpdateModResult.Success;
+        }
+        catch (HttpRequestException)
+        {
+            return UpdateModResult.Offline;
+        }
+        catch (TaskCanceledException)
+        {
+            return UpdateModResult.Failed;
+        }
+        catch (JsonException)
+        {
+            return UpdateModResult.Failed;
         }
     }
 
@@ -460,6 +559,89 @@ public class MainViewModel : INotifyPropertyChanged
         _ = CacheIconAsync(entry, iconUrl, cachePath);
     }
 
+    private string? EnsureOfflinePlaceholderIcon()
+    {
+        lock (_placeholderIconLock)
+        {
+            if (!string.IsNullOrWhiteSpace(_offlinePlaceholderIconPath) &&
+                File.Exists(_offlinePlaceholderIconPath))
+            {
+                return _offlinePlaceholderIconPath;
+            }
+
+            try
+            {
+                EnsureDirectoryExists(_iconCacheDirectory);
+
+                var placeholderPath = Path.Combine(_iconCacheDirectory, "no-icon-placeholder.png");
+
+                using (var bitmap = new Bitmap(128, 128))
+                using (var graphics = Graphics.FromImage(bitmap))
+                {
+                    graphics.Clear(Color.FromArgb(0x2d, 0x2d, 0x2d));
+
+                    const string text = "NO ICON";
+                    using var font = new Font("Segoe UI Semibold", 18, FontStyle.Bold, GraphicsUnit.Pixel);
+                    using var brush = new SolidBrush(Color.White);
+
+                    var size = graphics.MeasureString(text, font);
+                    var x = (bitmap.Width - size.Width) / 2f;
+                    var y = (bitmap.Height - size.Height) / 2f;
+                    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                    graphics.DrawString(text, font, brush, new PointF(x, y));
+
+                    bitmap.Save(placeholderPath, ImageFormat.Png);
+                }
+
+                _offlinePlaceholderIconPath = placeholderPath;
+                return _offlinePlaceholderIconPath;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ExternalException)
+            {
+                return null;
+            }
+        }
+    }
+
+    private async Task UpdateIconCacheForEntryAsync(ModEntry entry, bool hasIcon, string? iconUrl, CancellationToken cancellationToken)
+    {
+        if (!hasIcon || string.IsNullOrWhiteSpace(iconUrl))
+        {
+            DeleteCachedIconFiles(entry.Repo, null);
+            await SetIconPathAsync(entry, null, cancellationToken);
+            return;
+        }
+
+        var cachePath = GetIconCacheFilePath(entry.Repo, iconUrl);
+        var previousIconPath = entry.IconUrl;
+        var previousCachedPath = !string.IsNullOrWhiteSpace(previousIconPath) && File.Exists(previousIconPath)
+            ? previousIconPath
+            : null;
+
+        if (File.Exists(cachePath))
+        {
+            await SetIconPathAsync(entry, cachePath, cancellationToken);
+            DeleteCachedIconFiles(entry.Repo, cachePath);
+            return;
+        }
+
+        if (previousCachedPath == null)
+        {
+            await SetIconPathAsync(entry, iconUrl, cancellationToken);
+        }
+
+        await CacheIconAsync(entry, iconUrl, cachePath).ConfigureAwait(false);
+
+        if (File.Exists(cachePath))
+        {
+            DeleteCachedIconFiles(entry.Repo, cachePath);
+        }
+        else if (previousCachedPath != null)
+        {
+            await SetIconPathAsync(entry, previousCachedPath, cancellationToken);
+        }
+    }
+
     private void LoadFollowedUsers()
     {
         var filePath = ResolveFollowedUsersFilePath() ?? Path.Combine(AppContext.BaseDirectory, "followed-users.txt");
@@ -592,13 +774,33 @@ public class MainViewModel : INotifyPropertyChanged
             .Task;
     }
 
-    private async Task<BadgeQueryResult> QueryBadgesAsync(ModEntry entry, CancellationToken cancellationToken)
+    private Task SetIconPathAsync(ModEntry entry, string? iconPath, CancellationToken cancellationToken)
+    {
+        if (_dispatcher.CheckAccess())
+        {
+            entry.SetIconPath(iconPath);
+            return Task.CompletedTask;
+        }
+
+        return _dispatcher
+            .InvokeAsync(() => entry.SetIconPath(iconPath), DispatcherPriority.Normal, cancellationToken)
+            .Task;
+    }
+
+    private Task<BadgeQueryResult> QueryBadgesAsync(ModEntry entry, CancellationToken cancellationToken) =>
+        QueryBadgesAsync(entry, cancellationToken, null, null);
+
+    private async Task<BadgeQueryResult> QueryBadgesAsync(
+        ModEntry entry,
+        CancellationToken cancellationToken,
+        RepositoryLanguageMetadata? languageMetadata,
+        RepositoryTreeResult? treeResult)
     {
         var badges = new List<ModBadge>();
         DateTime? createdAt = null;
         DateTime? lastPush = null;
 
-        var languageMetadata = await FetchRepositoryLanguageMetadataAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+        languageMetadata ??= await FetchRepositoryLanguageMetadataAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
         if (languageMetadata != null)
         {
             if (languageMetadata.HasLua)
@@ -610,7 +812,8 @@ public class MainViewModel : INotifyPropertyChanged
             lastPush = languageMetadata.LastPush;
         }
 
-        var treePaths = await FetchRepositoryTreeAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+        treeResult ??= await FetchRepositoryTreeAsync(entry.Repo, cancellationToken).ConfigureAwait(false);
+        var treePaths = treeResult.Paths;
         if (treePaths.Count > 0)
         {
             if (ContainsLuaFiles(treePaths))
@@ -819,22 +1022,27 @@ public class MainViewModel : INotifyPropertyChanged
         return new RepositoryLanguageMetadata(hasLua, createdAt, lastPush, languages, owner);
     }
 
-    private async Task<List<string>> FetchRepositoryTreeAsync(string repo, CancellationToken cancellationToken)
+    private async Task<RepositoryTreeResult> FetchRepositoryTreeAsync(string repo, CancellationToken cancellationToken)
     {
         var paths = new List<string>();
 
         if (string.IsNullOrWhiteSpace(repo) || !repo.Contains('/'))
         {
-            return paths;
+            return new RepositoryTreeResult(paths, success: false, notFound: false);
         }
 
         using var response = await _httpClient
             .GetAsync($"https://api.github.com/repos/{repo}/git/trees/HEAD?recursive=1", cancellationToken)
             .ConfigureAwait(false);
 
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return new RepositoryTreeResult(paths, success: false, notFound: true);
+        }
+
         if (!response.IsSuccessStatusCode)
         {
-            return paths;
+            return new RepositoryTreeResult(paths, success: false, notFound: false);
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
@@ -842,7 +1050,7 @@ public class MainViewModel : INotifyPropertyChanged
 
         if (!document.RootElement.TryGetProperty("tree", out var treeElement))
         {
-            return paths;
+            return new RepositoryTreeResult(paths, success: false, notFound: false);
         }
 
         foreach (var item in treeElement.EnumerateArray())
@@ -859,7 +1067,7 @@ public class MainViewModel : INotifyPropertyChanged
             }
         }
 
-        return paths;
+        return new RepositoryTreeResult(paths, success: true, notFound: false);
     }
 
     private async Task<string?> FetchModYamlAsync(ModEntry entry, CancellationToken cancellationToken)
@@ -1406,8 +1614,15 @@ public class MainViewModel : INotifyPropertyChanged
 
             await _dispatcher.InvokeAsync(() => entry.SetIconPath(destinationPath));
         }
-        catch (Exception ex) when (ex is HttpRequestException ||
-                                   ex is IOException ||
+        catch (HttpRequestException)
+        {
+            var placeholderPath = EnsureOfflinePlaceholderIcon();
+            if (!string.IsNullOrWhiteSpace(placeholderPath))
+            {
+                await SetIconPathAsync(entry, placeholderPath, CancellationToken.None);
+            }
+        }
+        catch (Exception ex) when (ex is IOException ||
                                    ex is UnauthorizedAccessException ||
                                    ex is NotSupportedException ||
                                    ex is TaskCanceledException)
@@ -1435,6 +1650,44 @@ public class MainViewModel : INotifyPropertyChanged
             {
                 _iconDownloadsInProgress.Remove(destinationPath);
             }
+        }
+    }
+
+    private void DeleteCachedIconFiles(string repo, string? excludePath)
+    {
+        try
+        {
+            if (!Directory.Exists(_iconCacheDirectory))
+            {
+                return;
+            }
+
+            var sanitizedRepo = SanitizeFileName(repo);
+            foreach (var file in Directory.GetFiles(_iconCacheDirectory, sanitizedRepo + ".*"))
+            {
+                if (!string.IsNullOrWhiteSpace(excludePath))
+                {
+                    var normalizedExclude = Path.GetFullPath(excludePath);
+                    var normalizedFile = Path.GetFullPath(file);
+                    if (string.Equals(normalizedExclude, normalizedFile, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+                }
+
+                try
+                {
+                    File.Delete(file);
+                }
+                catch
+                {
+                    // Ignore cleanup failures for individual files.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException || ex is NotSupportedException)
+        {
+            // Ignore failures while attempting to clean the cache.
         }
     }
 
@@ -1666,6 +1919,8 @@ public class MainViewModel : INotifyPropertyChanged
             // Ignore failures; callers will handle missing directory.
         }
     }
+
+    private sealed record RepositoryTreeResult(List<string> Paths, bool Success, bool NotFound);
 
     private sealed record BadgeQueryResult(IReadOnlyList<ModBadge> Badges, DateTime? CreatedAt, DateTime? LastPush);
 
@@ -1974,6 +2229,28 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         return null;
+    }
+
+    private static void UpdateMatch(ModJsonEntry entry, string key, bool exists, string? url)
+    {
+        var matches = entry.Matches != null
+            ? new Dictionary<string, ModJsonMatch>(entry.Matches, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, ModJsonMatch>(StringComparer.OrdinalIgnoreCase);
+
+        if (exists)
+        {
+            matches[key] = new ModJsonMatch
+            {
+                Exists = true,
+                Url = string.IsNullOrWhiteSpace(url) ? null : url
+            };
+        }
+        else
+        {
+            matches.Remove(key);
+        }
+
+        entry.Matches = matches.Count > 0 ? matches : null;
     }
 
     private static string? BuildRawGitHubUrl(string? repo, string relativePath)
