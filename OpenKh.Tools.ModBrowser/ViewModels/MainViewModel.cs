@@ -549,13 +549,13 @@ public class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            entry.SetLoadingBadges(true);
+            await SetLoadingBadgesAsync(entry, true, cancellationToken);
             var result = await QueryBadgesAsync(entry, cancellationToken);
             var cacheEntry = new BadgeCacheEntry(result.Badges, result.CreatedAt, result.LastPush, DateTime.UtcNow);
             _badgeCache[entry.Repo] = cacheEntry;
             entry.UpdateBadges(cacheEntry.Badges);
             await ApplyMetadataUpdatesAsync(entry, result.CreatedAt, result.LastPush, cancellationToken);
-            await PersistBadgeCacheAsync(cancellationToken).ConfigureAwait(false);
+            await PersistBadgeCacheAsync(cancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -575,8 +575,21 @@ public class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            entry.SetLoadingBadges(false);
+            await SetLoadingBadgesAsync(entry, false, CancellationToken.None);
         }
+    }
+
+    private Task SetLoadingBadgesAsync(ModEntry entry, bool value, CancellationToken cancellationToken)
+    {
+        if (_dispatcher.CheckAccess())
+        {
+            entry.SetLoadingBadges(value);
+            return Task.CompletedTask;
+        }
+
+        return _dispatcher
+            .InvokeAsync(() => entry.SetLoadingBadges(value), DispatcherPriority.Normal, cancellationToken)
+            .Task;
     }
 
     private async Task<BadgeQueryResult> QueryBadgesAsync(ModEntry entry, CancellationToken cancellationToken)
