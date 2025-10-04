@@ -134,6 +134,8 @@
                             <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="Update Metadata"
+                                                      Click="OnUpdateModClick" />
                                             <MenuItem Header="Open in Browser"
                                                       Command="{Binding DataContext.OpenInBrowserCommand, Source={x:Reference MainWindowRoot}}"
                                                       CommandParameter="{Binding}" />
@@ -151,7 +153,35 @@
                                                 CommandParameter="{Binding}"
                                                 Style="{StaticResource TransparentButtonStyle}">
                                             <Border Background="#2d2d2d" CornerRadius="4">
-                                                <Image Source="{Binding IconUrl}" Stretch="UniformToFill"/>
+                                                <Grid>
+                                                    <Image Source="{Binding IconUrl}" Stretch="UniformToFill">
+                                                        <Image.Style>
+                                                            <Style TargetType="Image">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Image.Style>
+                                                    </Image>
+                                                    <TextBlock Text="Unknown"
+                                                               VerticalAlignment="Center"
+                                                               HorizontalAlignment="Center"
+                                                               Foreground="#a0a0a0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Visible" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasIcon}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Grid>
                                             </Border>
                                         </Button>
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center">
@@ -204,6 +234,8 @@
                             <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="Update Metadata"
+                                                      Click="OnUpdateModClick" />
                                             <MenuItem Header="Open in Browser"
                                                       Command="{Binding DataContext.OpenInBrowserCommand, Source={x:Reference MainWindowRoot}}"
                                                       CommandParameter="{Binding}" />
@@ -274,6 +306,8 @@
                             <Border BorderThickness="0,0,0,1" BorderBrush="#2d2d2d" Padding="8">
                                     <Border.ContextMenu>
                                         <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                            <MenuItem Header="Update Metadata"
+                                                      Click="OnUpdateModClick" />
                                             <MenuItem Header="Open in Browser"
                                                       Command="{Binding DataContext.OpenInBrowserCommand, Source={x:Reference MainWindowRoot}}"
                                                       CommandParameter="{Binding}" />
