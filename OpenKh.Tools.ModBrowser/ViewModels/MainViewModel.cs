@@ -24,6 +24,13 @@ namespace OpenKh.Tools.ModBrowser.ViewModels;
 
 public class MainViewModel : INotifyPropertyChanged
 {
+    private const long MaxIconBytes = 1 * 1024 * 1024;
+    private static readonly HashSet<string> AllowedIconHosts = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "raw.githubusercontent.com",
+        "raw.github.com"
+    };
+
     private readonly ObservableCollection<ModEntry> _mods = new();
     private readonly Dispatcher _dispatcher;
     private readonly Dictionary<string, BadgeCacheEntry> _badgeCache = new(StringComparer.OrdinalIgnoreCase);
@@ -1308,10 +1315,28 @@ public class MainViewModel : INotifyPropertyChanged
             _iconDownloadsInProgress.Add(destinationPath);
         }
 
+        var downloadSucceeded = false;
+
         try
         {
-            using var response = await _httpClient.GetAsync(iconUrl).ConfigureAwait(false);
+            if (!Uri.TryCreate(iconUrl, UriKind.Absolute, out var iconUri))
+            {
+                return;
+            }
+
+            if (!AllowedIconHosts.Contains(iconUri.Host))
+            {
+                return;
+            }
+
+            using var response = await _httpClient.GetAsync(iconUrl, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            var contentLength = response.Content.Headers.ContentLength;
+            if (contentLength.HasValue && contentLength.Value > MaxIconBytes)
             {
                 return;
             }
@@ -1327,7 +1352,42 @@ public class MainViewModel : INotifyPropertyChanged
                 4096,
                 useAsync: true);
 
-            await stream.CopyToAsync(fileStream).ConfigureAwait(false);
+            if (contentLength.HasValue)
+            {
+                await stream.CopyToAsync(fileStream).ConfigureAwait(false);
+                downloadSucceeded = true;
+            }
+            else
+            {
+                var buffer = new byte[81920];
+                long totalBytes = 0;
+                var exceededLimit = false;
+
+                while (true)
+                {
+                    var bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length).ConfigureAwait(false);
+                    if (bytesRead == 0)
+                    {
+                        break;
+                    }
+
+                    totalBytes += bytesRead;
+                    if (totalBytes > MaxIconBytes)
+                    {
+                        exceededLimit = true;
+                        break;
+                    }
+
+                    await fileStream.WriteAsync(buffer, 0, bytesRead).ConfigureAwait(false);
+                }
+
+                downloadSucceeded = !exceededLimit;
+            }
+
+            if (!downloadSucceeded)
+            {
+                return;
+            }
 
             await _dispatcher.InvokeAsync(() => entry.SetIconPath(destinationPath));
         }
@@ -1341,6 +1401,21 @@ public class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
+            if (!downloadSucceeded)
+            {
+                try
+                {
+                    if (File.Exists(destinationPath))
+                    {
+                        File.Delete(destinationPath);
+                    }
+                }
+                catch
+                {
+                    // Ignore failures while cleaning up incomplete downloads.
+                }
+            }
+
             lock (_iconDownloadsLock)
             {
                 _iconDownloadsInProgress.Remove(destinationPath);
