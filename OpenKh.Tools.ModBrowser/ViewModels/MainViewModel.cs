@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -46,11 +44,9 @@ public class MainViewModel : INotifyPropertyChanged
     private readonly SemaphoreSlim _badgeCacheLock = new(1, 1);
     private readonly HashSet<string> _iconDownloadsInProgress = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _iconDownloadsLock = new();
-    private readonly object _placeholderIconLock = new();
     private readonly string _cacheDirectory;
     private readonly string _badgeCacheFilePath;
     private readonly string _iconCacheDirectory;
-    private string? _offlinePlaceholderIconPath;
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
@@ -557,50 +553,6 @@ public class MainViewModel : INotifyPropertyChanged
         }
 
         _ = CacheIconAsync(entry, iconUrl, cachePath);
-    }
-
-    private string? EnsureOfflinePlaceholderIcon()
-    {
-        lock (_placeholderIconLock)
-        {
-            if (!string.IsNullOrWhiteSpace(_offlinePlaceholderIconPath) &&
-                File.Exists(_offlinePlaceholderIconPath))
-            {
-                return _offlinePlaceholderIconPath;
-            }
-
-            try
-            {
-                EnsureDirectoryExists(_iconCacheDirectory);
-
-                var placeholderPath = Path.Combine(_iconCacheDirectory, "no-icon-placeholder.png");
-
-                using (var bitmap = new Bitmap(128, 128))
-                using (var graphics = Graphics.FromImage(bitmap))
-                {
-                    graphics.Clear(Color.FromArgb(0x2d, 0x2d, 0x2d));
-
-                    const string text = "NO ICON";
-                    using var font = new Font("Segoe UI Semibold", 18, FontStyle.Bold, GraphicsUnit.Pixel);
-                    using var brush = new SolidBrush(Color.White);
-
-                    var size = graphics.MeasureString(text, font);
-                    var x = (bitmap.Width - size.Width) / 2f;
-                    var y = (bitmap.Height - size.Height) / 2f;
-                    graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-                    graphics.DrawString(text, font, brush, new PointF(x, y));
-
-                    bitmap.Save(placeholderPath, ImageFormat.Png);
-                }
-
-                _offlinePlaceholderIconPath = placeholderPath;
-                return _offlinePlaceholderIconPath;
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or NotSupportedException or ExternalException)
-            {
-                return null;
-            }
-        }
     }
 
     private async Task UpdateIconCacheForEntryAsync(ModEntry entry, bool hasIcon, string? iconUrl, CancellationToken cancellationToken)
@@ -1616,11 +1568,7 @@ public class MainViewModel : INotifyPropertyChanged
         }
         catch (HttpRequestException)
         {
-            var placeholderPath = EnsureOfflinePlaceholderIcon();
-            if (!string.IsNullOrWhiteSpace(placeholderPath))
-            {
-                await SetIconPathAsync(entry, placeholderPath, CancellationToken.None);
-            }
+            await SetIconPathAsync(entry, null, CancellationToken.None);
         }
         catch (Exception ex) when (ex is IOException ||
                                    ex is UnauthorizedAccessException ||
