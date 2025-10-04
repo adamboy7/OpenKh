@@ -786,10 +786,12 @@ public class MainViewModel : INotifyPropertyChanged
             .GetAsync($"https://api.github.com/repos/{repo}", cancellationToken)
             .ConfigureAwait(false))
         {
-            if (!response.IsSuccessStatusCode)
+            if (response.StatusCode == HttpStatusCode.NotFound)
             {
                 return null;
             }
+
+            response.EnsureSuccessStatusCode();
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
