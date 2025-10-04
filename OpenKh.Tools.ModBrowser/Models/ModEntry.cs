@@ -16,6 +16,7 @@ public class ModEntry : INotifyPropertyChanged
 {
     private DateTime? _createdAt;
     private DateTime? _lastPush;
+    private string? _iconPath;
 
     public ModEntry(
         string repo,
@@ -30,7 +31,8 @@ public class ModEntry : INotifyPropertyChanged
         Author = author;
         _createdAt = createdAt;
         _lastPush = lastPush;
-        IconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
+        RemoteIconUrl = string.IsNullOrWhiteSpace(iconUrl) ? null : iconUrl;
+        IconUrl = RemoteIconUrl;
         Category = category;
         ModYmlUrl = string.IsNullOrWhiteSpace(modYmlUrl) ? null : modYmlUrl;
     }
@@ -73,7 +75,23 @@ public class ModEntry : INotifyPropertyChanged
         }
     }
 
-    public string? IconUrl { get; }
+    public string? RemoteIconUrl { get; }
+
+    public string? IconUrl
+    {
+        get => _iconPath;
+        private set
+        {
+            if (_iconPath == value)
+            {
+                return;
+            }
+
+            _iconPath = value;
+            OnPropertyChanged(nameof(IconUrl));
+            OnPropertyChanged(nameof(HasIcon));
+        }
+    }
 
     public bool HasIcon => !string.IsNullOrWhiteSpace(IconUrl);
 
@@ -148,6 +166,8 @@ public class ModEntry : INotifyPropertyChanged
     public void UpdateBadges(IReadOnlyList<ModBadge>? badges) => Badges = badges ?? Array.Empty<ModBadge>();
 
     public void SetLoadingBadges(bool isLoading) => IsLoadingBadges = isLoading;
+
+    public void SetIconPath(string? iconPath) => IconUrl = string.IsNullOrWhiteSpace(iconPath) ? null : iconPath;
 
     private static string FormatDate(string prefix, DateTime? value) => value.HasValue
         ? $"{prefix}: {value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)}"

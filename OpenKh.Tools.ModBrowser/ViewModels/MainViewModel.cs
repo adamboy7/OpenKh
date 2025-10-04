@@ -26,13 +26,19 @@ public class MainViewModel : INotifyPropertyChanged
 {
     private readonly ObservableCollection<ModEntry> _mods = new();
     private readonly Dispatcher _dispatcher;
-    private readonly Dictionary<string, IReadOnlyList<ModBadge>> _badgeCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, BadgeCacheEntry> _badgeCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<ModJsonEntry> _modJsonEntries = new();
     private readonly Dictionary<string, ModJsonEntry> _modJsonEntryMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _modsFileLock = new(1, 1);
     private readonly SemaphoreSlim _followedUsersFileLock = new(1, 1);
     private readonly HashSet<string> _followedUsers = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient _httpClient = CreateHttpClient();
+    private readonly SemaphoreSlim _badgeCacheLock = new(1, 1);
+    private readonly HashSet<string> _iconDownloadsInProgress = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _iconDownloadsLock = new();
+    private readonly string _cacheDirectory;
+    private readonly string _badgeCacheFilePath;
+    private readonly string _iconCacheDirectory;
     private string _searchQuery = string.Empty;
     private SortOption _selectedSortOption;
     private SearchFilters _activeFilters = SearchFilters.Empty;
@@ -67,6 +73,12 @@ public class MainViewModel : INotifyPropertyChanged
     public MainViewModel()
     {
         _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+
+        _cacheDirectory = ResolveCacheDirectory();
+        _badgeCacheFilePath = Path.Combine(_cacheDirectory, "badges.json");
+        _iconCacheDirectory = Path.Combine(_cacheDirectory, "icons");
+        EnsureDirectoryExists(_iconCacheDirectory);
+        LoadBadgeCacheFromDisk();
 
         ModsWithIconView = CreateView(ModCategory.WithIcon);
         ModsWithoutIconView = CreateView(ModCategory.WithoutIcon);
@@ -225,6 +237,8 @@ public class MainViewModel : INotifyPropertyChanged
             await _dispatcher.InvokeAsync(() =>
             {
                 _mods.Add(entry);
+                ApplyCachedBadgeData(entry);
+                InitializeIconCache(entry, iconUrl);
                 RefreshViews();
             });
             await PersistModsJsonAsync(cancellationToken);
@@ -376,7 +390,6 @@ public class MainViewModel : INotifyPropertyChanged
             var entries = JsonSerializer.Deserialize<List<ModJsonEntry>>(json, options) ?? new List<ModJsonEntry>();
 
             _mods.Clear();
-            _badgeCache.Clear();
             _modJsonEntries.Clear();
             _modJsonEntryMap.Clear();
             foreach (var entry in entries)
@@ -390,14 +403,19 @@ public class MainViewModel : INotifyPropertyChanged
                 var category = DetermineCategory(entry);
                 var iconUrl = ExtractIconUrl(entry);
                 var modYmlUrl = ExtractModYmlUrl(entry);
-                _mods.Add(new ModEntry(
+                var modEntry = new ModEntry(
                     entry.Repo,
                     entry.Author,
                     entry.CreatedAt,
                     entry.LastPush,
                     iconUrl,
                     category,
-                    modYmlUrl));
+                    modYmlUrl);
+
+                ApplyCachedBadgeData(modEntry);
+                InitializeIconCache(modEntry, iconUrl);
+
+                _mods.Add(modEntry);
 
             }
 
@@ -407,6 +425,32 @@ public class MainViewModel : INotifyPropertyChanged
         {
             // Swallow and keep list empty. In a real app we might log this.
         }
+    }
+
+    private void ApplyCachedBadgeData(ModEntry entry)
+    {
+        if (_badgeCache.TryGetValue(entry.Repo, out var cached))
+        {
+            entry.UpdateBadges(cached.Badges);
+            entry.UpdateDates(cached.CreatedAt, cached.LastPush);
+        }
+    }
+
+    private void InitializeIconCache(ModEntry entry, string? iconUrl)
+    {
+        if (string.IsNullOrWhiteSpace(iconUrl))
+        {
+            return;
+        }
+
+        var cachePath = GetIconCacheFilePath(entry.Repo, iconUrl);
+        if (File.Exists(cachePath))
+        {
+            entry.SetIconPath(cachePath);
+            return;
+        }
+
+        _ = CacheIconAsync(entry, iconUrl, cachePath);
     }
 
     private void LoadFollowedUsers()
@@ -486,7 +530,8 @@ public class MainViewModel : INotifyPropertyChanged
 
         if (_badgeCache.TryGetValue(entry.Repo, out var cached))
         {
-            entry.UpdateBadges(cached);
+            entry.UpdateBadges(cached.Badges);
+            entry.UpdateDates(cached.CreatedAt, cached.LastPush);
             return;
         }
 
@@ -499,9 +544,11 @@ public class MainViewModel : INotifyPropertyChanged
         {
             entry.SetLoadingBadges(true);
             var result = await QueryBadgesAsync(entry, cancellationToken);
-            _badgeCache[entry.Repo] = result.Badges;
-            entry.UpdateBadges(result.Badges);
+            var cacheEntry = new BadgeCacheEntry(result.Badges, result.CreatedAt, result.LastPush, DateTime.UtcNow);
+            _badgeCache[entry.Repo] = cacheEntry;
+            entry.UpdateBadges(cacheEntry.Badges);
             await ApplyMetadataUpdatesAsync(entry, result.CreatedAt, result.LastPush, cancellationToken);
+            await PersistBadgeCacheAsync(cancellationToken).ConfigureAwait(false);
         }
         catch (HttpRequestException)
         {
@@ -1249,7 +1296,309 @@ public class MainViewModel : INotifyPropertyChanged
         return segments.Any(segment => string.Equals(segment, "remastered", StringComparison.OrdinalIgnoreCase));
     }
 
+    private async Task CacheIconAsync(ModEntry entry, string iconUrl, string destinationPath)
+    {
+        lock (_iconDownloadsLock)
+        {
+            if (_iconDownloadsInProgress.Contains(destinationPath))
+            {
+                return;
+            }
+
+            _iconDownloadsInProgress.Add(destinationPath);
+        }
+
+        try
+        {
+            using var response = await _httpClient.GetAsync(iconUrl).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+
+            EnsureDirectoryExists(_iconCacheDirectory);
+
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            await using var fileStream = new FileStream(
+                destinationPath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                useAsync: true);
+
+            await stream.CopyToAsync(fileStream).ConfigureAwait(false);
+
+            await _dispatcher.InvokeAsync(() => entry.SetIconPath(destinationPath));
+        }
+        catch (Exception ex) when (ex is HttpRequestException ||
+                                   ex is IOException ||
+                                   ex is UnauthorizedAccessException ||
+                                   ex is NotSupportedException ||
+                                   ex is TaskCanceledException)
+        {
+            // Ignore failures while caching icons.
+        }
+        finally
+        {
+            lock (_iconDownloadsLock)
+            {
+                _iconDownloadsInProgress.Remove(destinationPath);
+            }
+        }
+    }
+
+    private string GetIconCacheFilePath(string repo, string iconUrl)
+    {
+        var sanitizedRepo = SanitizeFileName(repo);
+        var extension = GetIconExtension(iconUrl);
+        return Path.Combine(_iconCacheDirectory, sanitizedRepo + extension);
+    }
+
+    private static string GetIconExtension(string iconUrl)
+    {
+        if (Uri.TryCreate(iconUrl, UriKind.Absolute, out var uri))
+        {
+            var fromUri = Path.GetExtension(uri.AbsolutePath);
+            if (IsValidExtension(fromUri))
+            {
+                return fromUri;
+            }
+        }
+
+        var fallback = Path.GetExtension(iconUrl);
+        return IsValidExtension(fallback) ? fallback! : ".png";
+    }
+
+    private static bool IsValidExtension(string? extension) =>
+        !string.IsNullOrWhiteSpace(extension) &&
+        extension.StartsWith('.') &&
+        extension.Length <= 8;
+
+    private static string SanitizeFileName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "icon";
+        }
+
+        var invalidChars = Path.GetInvalidFileNameChars();
+        var builder = new StringBuilder(value.Length);
+        foreach (var ch in value)
+        {
+            var normalized = ch is '/' or '\\' ? '_' : ch;
+            builder.Append(invalidChars.Contains(normalized) ? '_' : normalized);
+        }
+
+        return builder.Length > 0 ? builder.ToString() : "icon";
+    }
+
+    private void LoadBadgeCacheFromDisk()
+    {
+        if (!File.Exists(_badgeCacheFilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var json = File.ReadAllText(_badgeCacheFilePath);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+
+            var data = JsonSerializer.Deserialize<Dictionary<string, BadgeCacheEntryDto>>(json, options);
+            if (data == null)
+            {
+                return;
+            }
+
+            _badgeCache.Clear();
+            foreach (var pair in data)
+            {
+                if (string.IsNullOrWhiteSpace(pair.Key) || pair.Value == null)
+                {
+                    continue;
+                }
+
+                var badges = new List<ModBadge>();
+                if (pair.Value.Badges != null)
+                {
+                    foreach (var badgeDto in pair.Value.Badges)
+                    {
+                        var badge = CreateBadgeFromDto(badgeDto);
+                        if (badge != null)
+                        {
+                            badges.Add(badge);
+                        }
+                    }
+                }
+
+                var cacheEntry = new BadgeCacheEntry(
+                    badges.Count > 0 ? badges.ToArray() : Array.Empty<ModBadge>(),
+                    pair.Value.CreatedAt,
+                    pair.Value.LastPush,
+                    pair.Value.CachedAt == default ? DateTime.MinValue : pair.Value.CachedAt);
+
+                _badgeCache[pair.Key] = cacheEntry;
+            }
+        }
+        catch (Exception ex) when (ex is IOException ||
+                                   ex is JsonException ||
+                                   ex is UnauthorizedAccessException ||
+                                   ex is NotSupportedException)
+        {
+            // Ignore failures while loading cached badges.
+        }
+    }
+
+    private async Task PersistBadgeCacheAsync(CancellationToken cancellationToken)
+    {
+        await _badgeCacheLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            EnsureDirectoryExists(_cacheDirectory);
+
+            var snapshot = new Dictionary<string, BadgeCacheEntryDto>(_badgeCache.Count, StringComparer.OrdinalIgnoreCase);
+            foreach (var (repo, cache) in _badgeCache)
+            {
+                snapshot[repo] = new BadgeCacheEntryDto
+                {
+                    CreatedAt = cache.CreatedAt,
+                    LastPush = cache.LastPush,
+                    CachedAt = cache.CachedAt == default ? DateTime.UtcNow : cache.CachedAt,
+                    Badges = cache.Badges.Select(b => new BadgeDto
+                    {
+                        Label = b.Label,
+                        Background = b.Background,
+                        Foreground = b.Foreground
+                    }).ToList()
+                };
+            }
+
+            var options = new JsonSerializerOptions
+            {
+                WriteIndented = true
+            };
+
+            await using var stream = new FileStream(
+                _badgeCacheFilePath,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                4096,
+                useAsync: true);
+
+            await JsonSerializer.SerializeAsync(stream, snapshot, options, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException ||
+                                   ex is UnauthorizedAccessException ||
+                                   ex is NotSupportedException ||
+                                   ex is JsonException)
+        {
+            // Ignore persistence errors; cache will rebuild next time.
+        }
+        finally
+        {
+            _badgeCacheLock.Release();
+        }
+    }
+
+    private static ModBadge? CreateBadgeFromDto(BadgeDto? dto)
+    {
+        if (dto == null || string.IsNullOrWhiteSpace(dto.Label))
+        {
+            return null;
+        }
+
+        var background = string.IsNullOrWhiteSpace(dto.Background) ? "#2962ff" : dto.Background!;
+        var foreground = string.IsNullOrWhiteSpace(dto.Foreground) ? "White" : dto.Foreground!;
+        return new ModBadge(dto.Label!, background, foreground);
+    }
+
+    private static string ResolveCacheDirectory()
+    {
+        var candidates = new List<string>();
+
+        try
+        {
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            if (!string.IsNullOrWhiteSpace(localAppData))
+            {
+                candidates.Add(Path.Combine(localAppData, "OpenKh", "ModBrowserCache"));
+            }
+        }
+        catch (Exception ex) when (ex is PlatformNotSupportedException ||
+                                   ex is InvalidOperationException ||
+                                   ex is ArgumentException)
+        {
+            // Ignore and fall back to other locations.
+        }
+
+        candidates.Add(Path.Combine(AppContext.BaseDirectory, "ModBrowserCache"));
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                Directory.CreateDirectory(candidate);
+                return candidate;
+            }
+            catch (Exception ex) when (ex is IOException ||
+                                       ex is UnauthorizedAccessException ||
+                                       ex is NotSupportedException)
+            {
+                // Try next location.
+            }
+        }
+
+        var fallback = Path.Combine(Path.GetTempPath(), "OpenKh", "ModBrowserCache");
+        EnsureDirectoryExists(fallback);
+        return fallback;
+    }
+
+    private static void EnsureDirectoryExists(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        try
+        {
+            Directory.CreateDirectory(path);
+        }
+        catch (Exception ex) when (ex is IOException ||
+                                   ex is UnauthorizedAccessException ||
+                                   ex is NotSupportedException)
+        {
+            // Ignore failures; callers will handle missing directory.
+        }
+    }
+
     private sealed record BadgeQueryResult(IReadOnlyList<ModBadge> Badges, DateTime? CreatedAt, DateTime? LastPush);
+
+    private sealed record BadgeCacheEntry(
+        IReadOnlyList<ModBadge> Badges,
+        DateTime? CreatedAt,
+        DateTime? LastPush,
+        DateTime CachedAt);
+
+    private sealed class BadgeCacheEntryDto
+    {
+        public List<BadgeDto>? Badges { get; set; }
+        public DateTime? CreatedAt { get; set; }
+        public DateTime? LastPush { get; set; }
+        public DateTime CachedAt { get; set; }
+    }
+
+    private sealed class BadgeDto
+    {
+        public string? Label { get; set; }
+        public string? Background { get; set; }
+        public string? Foreground { get; set; }
+    }
 
     private sealed record RepositoryLanguageMetadata(
         bool HasLua,
