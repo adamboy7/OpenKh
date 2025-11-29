@@ -31,7 +31,9 @@ namespace OpenKh.Tools.ModsManager.Services
             public string GameModPath { get; internal set; }
             public string GameDataPath { get; internal set; }
             public int GameEdition { get; internal set; }
-            public string IsoLocation { get; internal set; }
+            public string IsoLocationKH2 { get; internal set; }
+            public string IsoLocationKH1 { get; internal set; }
+            public string IsoLocationRecom { get; internal set; }
             public string OpenKhGameEngineLocation { get; internal set; }
             public string Pcsx2Location { get; internal set; }
             public string PcReleaseLocation { get; internal set; }
@@ -86,6 +88,14 @@ namespace OpenKh.Tools.ModsManager.Services
         private static string EnabledCollectionModsPathKH3D = Path.Combine(StoragePath, "collection-mods-KH3D.json");
         private static readonly Config _config = Config.Open(ConfigPath);
         public static string PresetPath = Path.Combine(StoragePath, "presets");
+        private static readonly HashSet<string> _supportedGames = new HashSet<string>()
+        {
+            "kh2",
+            "kh1",
+            "bbs",
+            "Recom",
+            "kh3d"
+        };
 
         public class YamlGenPref
         {
@@ -243,7 +253,7 @@ namespace OpenKh.Tools.ModsManager.Services
 
         public static string ModsGamePath
         {
-            get => _config.ModCollectionPath ?? Path.GetFullPath(Path.Combine(StoragePath, "mods", LaunchGame));
+            get => Path.Combine(_config.ModCollectionPath ?? Path.GetFullPath(StoragePath), "mods", LaunchGame);
             set
             {
                 _config.ModCollectionPath = value;
@@ -263,7 +273,7 @@ namespace OpenKh.Tools.ModsManager.Services
 
         public static string GameModPath
         {
-            get => _config.GameModPath ?? Path.GetFullPath(Path.Combine(StoragePath, "mod"));
+            get => Path.Combine(_config.ModCollectionPath ?? Path.GetFullPath(StoragePath), "mod", LaunchGame);
             set
             {
                 _config.GameModPath = value;
@@ -291,12 +301,30 @@ namespace OpenKh.Tools.ModsManager.Services
             }
         }
 
-        public static string IsoLocation
+        public static string IsoLocationKH2
         {
-            get => _config.IsoLocation;
+            get => _config.IsoLocationKH2;
             set
             {
-                _config.IsoLocation = value;
+                _config.IsoLocationKH2 = value;
+                _config.Save(ConfigPath);
+            }
+        }
+        public static string IsoLocationKH1
+        {
+            get => _config.IsoLocationKH1;
+            set
+            {
+                _config.IsoLocationKH1 = value;
+                _config.Save(ConfigPath);
+            }
+        }
+        public static string IsoLocationRecom
+        {
+            get => _config.IsoLocationRecom;
+            set
+            {
+                _config.IsoLocationRecom = value;
                 _config.Save(ConfigPath);
             }
         }
@@ -550,7 +578,7 @@ namespace OpenKh.Tools.ModsManager.Services
         }
         public static string LaunchGame
         {
-            get => _config.LaunchGame;
+            get => _supportedGames.Contains(_config.LaunchGame) ? _config.LaunchGame : _config.LaunchGame = "kh2";
             set
             {
                 _config.LaunchGame = value;
