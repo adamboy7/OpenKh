@@ -1,0 +1,46 @@
+using System.Windows;
+using Forms = System.Windows.Forms;
+
+namespace OpenKh.Command.SpawnPointExplorer;
+
+public partial class MainWindow : Window
+{
+    private readonly MainWindowViewModel _viewModel;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        _viewModel = new MainWindowViewModel();
+        DataContext = _viewModel;
+    }
+
+    private async void OnBrowseClick(object sender, RoutedEventArgs e)
+    {
+        using var dialog = new Forms.FolderBrowserDialog
+        {
+            Description = "Select the extracted KH2 data directory"
+        };
+
+        if (!string.IsNullOrEmpty(_viewModel.DataRoot))
+        {
+            dialog.SelectedPath = _viewModel.DataRoot;
+        }
+
+        if (dialog.ShowDialog() == Forms.DialogResult.OK)
+        {
+            _viewModel.DataRoot = dialog.SelectedPath;
+            await _viewModel.LoadAsync();
+        }
+    }
+
+    private async void OnRefreshClick(object sender, RoutedEventArgs e)
+    {
+        await _viewModel.LoadAsync();
+    }
+
+    private void OnTreeSelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        _viewModel.SelectedTreeItem = e.NewValue;
+    }
+
+}
